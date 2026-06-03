@@ -5,13 +5,17 @@ import AuthGuard from "@/components/AuthGuard";
 import UserMenu from "@/components/UserMenu";
 
 export const metadata: Metadata = {
-  title: "股市損益",
+  title: "Daily Stock",
   description: "個人持股損益追蹤",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-512.png",
+    apple: "/icon-512.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "股市損益",
+    title: "Daily Stock",
   },
 };
 
@@ -28,20 +32,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-TW">
       <head>
-        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        <link rel="apple-touch-icon" href="/icon-512.png" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="bg-surface min-h-screen font-sans antialiased">
         <AuthGuard>
           <div className="max-w-md mx-auto min-h-screen relative">
-            {/* 右上角使用者選單（登入頁不顯示） */}
             <div className="absolute top-3 right-4 z-30">
               <UserMenu />
             </div>
 
-            <main className="pb-24 pt-0">
-              {children}
-            </main>
+            <main className="pb-24 pt-0">{children}</main>
 
             <BottomNav />
           </div>
