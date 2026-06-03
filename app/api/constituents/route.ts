@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { ConstituentData, TopHolding, WeightItem } from "@/types";
 
 // ════════════════════════════════════════════════════════════
-// helpers
+// 基本 helpers
 // ════════════════════════════════════════════════════════════
 
 function empty(symbol: string): ConstituentData {
@@ -18,9 +18,6 @@ function empty(symbol: string): ConstituentData {
   };
 }
 
-/**
- * 從 quote 物件裡取第一個存在的字串欄位
- */
 function pickStr(obj: Record<string, unknown>, ...keys: string[]): string {
   for (const k of keys) {
     const v = obj[k];
@@ -29,9 +26,6 @@ function pickStr(obj: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
-/**
- * 從 quote 物件裡取第一個非空 array 欄位
- */
 function pickArr(obj: Record<string, unknown>, ...keys: string[]): unknown[] {
   for (const k of keys) {
     const v = obj[k];
@@ -40,36 +34,198 @@ function pickArr(obj: Record<string, unknown>, ...keys: string[]): unknown[] {
   return [];
 }
 
-/**
- * 把任意陣列正規化成 WeightItem[]
- * - name  : name / industry / sector / category / assetName / label / type
- * - weight: weight / percent / ratio / value / percentage
- * 過濾 weight <= 0，依 weight 大到小排序
- */
 function normalizeWeightItems(arr: unknown[]): WeightItem[] {
   const NAME_KEYS   = ["name", "industry", "sector", "category", "assetName", "label", "type"];
   const WEIGHT_KEYS = ["weight", "percent", "ratio", "value", "percentage"];
-
   const result: WeightItem[] = [];
-
   for (const item of arr) {
     if (typeof item !== "object" || item === null) continue;
     const o = item as Record<string, unknown>;
-
     const nameKey   = NAME_KEYS.find((k)   => typeof o[k] === "string" && (o[k] as string).trim());
     const weightKey = WEIGHT_KEYS.find((k) => o[k] !== undefined && o[k] !== null);
     if (!nameKey || !weightKey) continue;
-
     const w = Number(o[weightKey]);
     if (isNaN(w) || w <= 0) continue;
+    result.push({ name: (o[nameKey] as string).trim(), weight: w });
+  }
+  return result.sort((a, b) => b.weight - a.weight);
+}
 
-    result.push({
-      name:   (o[nameKey] as string).trim(),
-      weight: w,
-    });
+// ════════════════════════════════════════════════════════════
+// HTML 文字 fallback 解析器
+// ════════════════════════════════════════════════════════════
+
+/** 移除 HTML tags、script/style 區塊，解碼常用 HTML entity */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi,  " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g,  " ")
+    .replace(/&amp;/g,   "&")
+    .replace(/&lt;/g,    "<")
+    .replace(/&gt;/g,    ">")
+    .replace(/&quot;/g,  '"')
+    .replace(/&#x27;/g,  "'")
+    .replace(/\s+/g,     " ")
+    .trim();
+}
+
+/**
+ * 從純文字中擷取某個 section 的名稱+百分比列表。
+ *
+ * @param text        stripHtml 後的全文
+ * @param sectionTitle  要找的標題，例如 "前十大持股"
+ * @param stopTitles    遇到這些標題就停止，例如 ["行業比重","資產分佈","資產分布"]
+ */
+function extractSectionItems(
+  text:         string,
+  sectionTitle: string,
+  stopTitles:   string[],
+): WeightItem[] {
+  const startIdx = text.indexOf(sectionTitle);
+  if (startIdx === -1) return [];
+
+  // 找到下一個 stopTitle 之前的範圍（最多取 3000 字元）
+  let endIdx = Math.min(text.length, startIdx + sectionTitle.length + 3000);
+  for (const stop of stopTitles) {
+    const idx = text.indexOf(stop, startIdx + sectionTitle.length);
+    if (idx !== -1 && idx < endIdx) endIdx = idx;
   }
 
-  return result.sort((a, b) => b.weight - a.weight);
+  const section = text.slice(startIdx + sectionTitle.length, endIdx);
+  const items: WeightItem[] = [];
+
+  /**
+   * 匹配模式優先序：
+   * A) 名稱 + 空白 + 數字%   e.g. "台積電 8.97%"
+   * B) 名稱 + 數字%          e.g. "台積電8.97%"  (無空白)
+   *
+   * 名稱：2~15 個 中文字 / 英數 / 常見符號（去除純數字）
+   * 百分比：1~3 位整數 + 可選小數點
+   */
+  const RE = /([一-鿿][一-鿿\w（）【】&.-]{0,14})\s{0,4}([\d]{1,3}(?:\.[\d]{1,4}))%/g;
+  let m: RegExpExecArray | null;
+  const seen = new Set<string>();
+
+  while ((m = RE.exec(section)) !== null) {
+    const name   = m[1].trim();
+    const weight = parseFloat(m[2]);
+    if (!name || weight <= 0 || weight > 100) continue;
+    if (seen.has(name)) continue; // 去重
+    seen.add(name);
+    items.push({ name, weight });
+  }
+
+  // 依 weight 大到小排序，最多回傳 20 筆
+  return items.sort((a, b) => b.weight - a.weight).slice(0, 20);
+}
+
+/** 從純文字中找第一個符合 YYYY/MM/DD 或 YYYY-MM-DD 的日期 */
+function extractDate(text: string): string {
+  const m = text.match(/\d{4}[\/\-]\d{2}[\/\-]\d{2}/);
+  return m ? m[0].replace(/-/g, "/") : "";
+}
+
+// ════════════════════════════════════════════════════════════
+// 方法 1：__NEXT_DATA__ 解析
+// ════════════════════════════════════════════════════════════
+
+function parseFromNextData(html: string, symbol: string): ConstituentData | null {
+  const ndMatch = html.match(
+    /<script\s+id="__NEXT_DATA__"\s+type="application\/json">([\s\S]+?)<\/script>/
+  );
+  if (!ndMatch) return null;
+
+  let data: unknown;
+  try { data = JSON.parse(ndMatch[1]); }
+  catch { return null; }
+
+  const root      = data as Record<string, unknown>;
+  const props     = root.props      as Record<string, unknown> | undefined;
+  const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+  const quote     = pageProps?.quote as Record<string, unknown> | undefined;
+  if (!quote) return null;
+
+  // topHoldings
+  const holdingsRaw = pickArr(quote, "holdings", "topHoldings", "holding");
+  const topHoldings: TopHolding[] = holdingsRaw
+    .filter((i): i is Record<string, unknown> => typeof i === "object" && i !== null)
+    .map((item, i) => ({
+      rank:   i + 1,
+      name:   String(item.name   ?? "").trim(),
+      symbol: String(item.symbol ?? "").trim(),
+      weight: Number(item.weight ?? item.percent ?? 0),
+    }))
+    .filter((h) => h.name && h.weight > 0);
+
+  const industries = normalizeWeightItems(
+    pickArr(quote, "industryRatios","industries","industryRatio","sectors","sectorRatios","sectorWeightings")
+  );
+  const assets = normalizeWeightItems(
+    pickArr(quote, "assetRatios","assets","assetAllocation","assetRatio","assetDistribution")
+  );
+
+  const holdingDate  = pickStr(quote, "holdingsDate","holdingDate","holding_date","date");
+  const industryDate = pickStr(quote, "industryDate","industry_date","date");
+  const assetDate    = pickStr(quote, "assetDate","asset_date","date");
+
+  if (topHoldings.length === 0 && industries.length === 0 && assets.length === 0) return null;
+
+  return { symbol, source:"Yahoo股市", holdingDate, industryDate, assetDate, topHoldings, industries, assets };
+}
+
+// ════════════════════════════════════════════════════════════
+// 方法 2：HTML 文字 fallback 解析
+// ════════════════════════════════════════════════════════════
+
+function parseFromHtmlText(html: string, symbol: string): ConstituentData {
+  const text = stripHtml(html);
+
+  // 前十大持股
+  const holdingItems = extractSectionItems(
+    text,
+    "前十大持股",
+    ["行業比重", "行業比例", "產業比重", "資產分佈", "資產分布", "資產配置"],
+  );
+  const topHoldings: TopHolding[] = holdingItems.map((item, i) => ({
+    rank:   i + 1,
+    name:   item.name,
+    symbol: "",
+    weight: item.weight,
+  }));
+
+  // 行業比重（多種標題寫法）
+  const industries = extractSectionItems(
+    text,
+    text.includes("行業比重") ? "行業比重"
+      : text.includes("行業比例") ? "行業比例"
+      : "產業比重",
+    ["資產分佈", "資產分布", "資產配置", "前十大"],
+  );
+
+  // 資產分佈（多種標題寫法）
+  const assets = extractSectionItems(
+    text,
+    text.includes("資產分佈") ? "資產分佈"
+      : text.includes("資產分布") ? "資產分布"
+      : "資產配置",
+    ["前十大", "行業", "產業"],
+  );
+
+  // 日期（從整個 HTML 找第一個日期）
+  const date = extractDate(text);
+
+  return {
+    symbol,
+    source:       "Yahoo股市",
+    holdingDate:  date,
+    industryDate: date,
+    assetDate:    date,
+    topHoldings,
+    industries,
+    assets,
+  };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -80,10 +236,7 @@ export async function GET(req: NextRequest) {
   const symbol = req.nextUrl.searchParams.get("symbol")?.trim().toUpperCase();
   if (!symbol) return NextResponse.json(empty(""), { status: 200 });
 
-  const base = empty(symbol);
-
   try {
-    // ── 1. Fetch Yahoo Finance Taiwan ETF holding 頁 ─────
     const url = `https://tw.stock.yahoo.com/quote/${encodeURIComponent(symbol)}.TW/holding`;
 
     const res = await fetch(url, {
@@ -95,86 +248,23 @@ export async function GET(req: NextRequest) {
         "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
         "Referer":         "https://tw.stock.yahoo.com/",
       },
-      next: { revalidate: 14400 }, // cache 4 小時
+      next: { revalidate: 14400 },
     });
 
-    if (!res.ok) return NextResponse.json(base, { status: 200 });
+    if (!res.ok) return NextResponse.json(empty(symbol), { status: 200 });
 
     const html = await res.text();
 
-    // ── 2. 取出 <script id="__NEXT_DATA__"> ─────────────
-    const ndMatch = html.match(
-      /<script\s+id="__NEXT_DATA__"\s+type="application\/json">([\s\S]+?)<\/script>/
-    );
-    if (!ndMatch) return NextResponse.json(base, { status: 200 });
+    // ── 方法 1：__NEXT_DATA__ ───────────────────────────
+    const fromNextData = parseFromNextData(html, symbol);
+    if (fromNextData) return NextResponse.json(fromNextData);
 
-    // ── 3. JSON.parse ───────────────────────────────────
-    let data: unknown;
-    try {
-      data = JSON.parse(ndMatch[1]);
-    } catch {
-      return NextResponse.json(base, { status: 200 });
-    }
-
-    // ── 4. 讀取 props.pageProps.quote ───────────────────
-    const root      = data as Record<string, unknown>;
-    const props     = root.props      as Record<string, unknown> | undefined;
-    const pageProps = props?.pageProps as Record<string, unknown> | undefined;
-    const quote     = pageProps?.quote as Record<string, unknown> | undefined;
-
-    if (!quote) return NextResponse.json(base, { status: 200 });
-
-    // ── 5. 解析 topHoldings（quote.holdings）────────────
-    const holdingsRaw = pickArr(quote, "holdings", "topHoldings", "holding");
-
-    const topHoldings: TopHolding[] = holdingsRaw
-      .filter((item): item is Record<string, unknown> =>
-        typeof item === "object" && item !== null
-      )
-      .map((item, i) => ({
-        rank:   i + 1,
-        name:   typeof item.name   === "string" ? item.name.trim() : String(item.name ?? ""),
-        symbol: typeof item.symbol === "string" ? item.symbol.trim() : "",
-        weight: Number(item.weight ?? item.percent ?? 0),
-      }))
-      .filter((h) => h.name && h.weight > 0);
-
-    // ── 6. 解析 industries ───────────────────────────────
-    const industriesRaw = pickArr(
-      quote,
-      "industryRatios", "industries", "industryRatio",
-      "sectors", "sectorRatios", "sectorWeightings",
-    );
-    const industries = normalizeWeightItems(industriesRaw);
-
-    // ── 7. 解析 assets ────────────────────────────────────
-    const assetsRaw = pickArr(
-      quote,
-      "assetRatios", "assets", "assetAllocation",
-      "assetRatio", "assetDistribution",
-    );
-    const assets = normalizeWeightItems(assetsRaw);
-
-    // ── 8. 日期 ───────────────────────────────────────────
-    const holdingDate  = pickStr(quote, "holdingsDate", "holdingDate", "holding_date", "date");
-    const industryDate = pickStr(quote, "industryDate", "industry_date", "date");
-    const assetDate    = pickStr(quote, "assetDate",    "asset_date",    "date");
-
-    // ── 9. 回傳（topHoldings 若有資料就回傳，不因部分缺失而整個空掉）
-    return NextResponse.json({
-      symbol,
-      source:       "Yahoo股市",
-      holdingDate:  holdingDate  || "",
-      industryDate: industryDate || "",
-      assetDate:    assetDate    || "",
-      topHoldings,
-      industries,
-      assets,
-    } satisfies ConstituentData);
+    // ── 方法 2：HTML 文字 fallback ──────────────────────
+    const fromHtml = parseFromHtmlText(html, symbol);
+    return NextResponse.json(fromHtml);
 
   } catch (err) {
-    // 任何未預期的錯誤都不 500
     console.warn("[GET /api/constituents]", symbol, err);
-    return NextResponse.json(base, { status: 200 });
+    return NextResponse.json(empty(symbol), { status: 200 });
   }
 }
