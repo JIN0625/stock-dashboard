@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/quotes/route": "app/api/quotes/route.js",
+  "/api/quotes/history/route": "app/api/quotes/history/route.js",
+  "/api/holdings/[id]/route": "app/api/holdings/[id]/route.js",
+  "/api/holdings/route": "app/api/holdings/route.js",
+  "/auth/callback/route": "app/auth/callback/route.js",
+  "/api/stock-info/route": "app/api/stock-info/route.js",
+  "/stock/[symbol]/page": "app/stock/[symbol]/page.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/holdings/page": "app/holdings/page.js"
+}
