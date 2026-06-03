@@ -58,6 +58,9 @@ export default function StockDetailPage() {
   const [pageError, setPageError] = useState("");
 
   // 編輯 Modal 狀態
+  // 成分股
+  const [constituents, setConstituents] = useState<Array<{ symbol: string; name: string; percentage: number }>>([]);
+
   const [showEdit, setShowEdit]         = useState(false);
   const [editForm, setEditForm]         = useState<EditForm>({ symbol: "", name: "", shares: "", avg_cost: "", type: "stock" });
   const [nameStatus, setNameStatus]     = useState<NameStatus>("found");
@@ -118,6 +121,12 @@ export default function StockDetailPage() {
           const info = await infoRes.json();
           market = info.market ?? "";
         }
+      } catch { /* ignore */ }
+
+      // 5. 成分股（ETF 才有，查不到也不影響頁面）
+      try {
+        const cRes = await fetch(`/api/constituents?symbol=${symbol}`);
+        if (cRes.ok) setConstituents(await cRes.json());
       } catch { /* ignore */ }
 
       setHolding({
@@ -412,6 +421,35 @@ export default function StockDetailPage() {
             valueClass={pnlColor(holding.total_pnl_pct)}
           />
         </div>
+
+        {/* ── 成分股（ETF 才顯示，查不到顯示提示）────── */}
+        {holding.type === "etf" && (
+          <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+            <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">成分股</p>
+            {constituents.length === 0 ? (
+              <p className="text-xs text-muted py-2 text-center">目前無法取得成分股資料</p>
+            ) : (
+              <div className="space-y-2">
+                {constituents.slice(0, 10).map((c) => (
+                  <div key={c.symbol} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-500 w-12">{c.symbol}</span>
+                      <span className="text-xs text-gray-700">{c.name}</span>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-600">
+                      {c.percentage?.toFixed(2) ?? "—"}%
+                    </span>
+                  </div>
+                ))}
+                {constituents.length > 10 && (
+                  <p className="text-xs text-muted text-center pt-1">
+                    顯示前 10 檔，共 {constituents.length} 檔
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
 

@@ -1,9 +1,9 @@
 export interface Holding {
   id:         string;
-  symbol:     string;           // e.g. "2330"
-  name:       string;           // e.g. "台積電"
+  symbol:     string;
+  name:       string;
   shares:     number;
-  avg_cost:   number;           // 平均成本（元）
+  avg_cost:   number;
   type:       "stock" | "etf";
   created_at?: string;
 }
@@ -11,24 +11,23 @@ export interface Holding {
 export interface Quote {
   symbol:     string;
   price:      number;
-  change:     number;           // 今日漲跌（元）
-  change_pct: number;           // 今日漲跌（%）
-  date:       string;           // YYYY-MM-DD
+  change:     number;
+  change_pct: number;
+  date:       string;
 }
 
-// Holding enriched with live quote data
 export interface HoldingWithQuote extends Holding {
   current_price: number;
   change:        number;
   change_pct:    number;
-  market_value:  number;        // 目前市值
-  cost_basis:    number;        // 投入成本
-  total_pnl:     number;        // 總損益
-  total_pnl_pct: number;        // 報酬率
-  daily_pnl:     number;        // 今日損益
-  quote_date?:   string;        // 最新報價日期
-  market?:       string;        // e.g. "上市" | "上櫃" | "ETF"
-  history?:      PricePoint[];  // 走勢歷史（sparkline）
+  market_value:  number;
+  cost_basis:    number;
+  total_pnl:     number;
+  total_pnl_pct: number;
+  daily_pnl:     number;
+  quote_date?:   string;
+  market?:       string;
+  history?:      PricePoint[];
 }
 
 export interface PricePoint {
@@ -43,4 +42,54 @@ export interface PortfolioSummary {
   total_pnl_pct:  number;
   daily_pnl:      number;
   daily_pnl_pct:  number;
+}
+
+// ── DCA ─────────────────────────────────────────────────────
+
+export interface DcaPlan {
+  id:             string;
+  user_id:        string;
+  symbol:         string;
+  name:           string;
+  type:           "stock" | "etf";
+  day_of_month:   number;
+  monthly_amount: number;
+  is_active:      boolean;
+  created_at:     string;
+  updated_at:     string;
+}
+
+export interface DcaExecution {
+  id:             string;
+  user_id:        string;
+  dca_plan_id:    string;
+  symbol:         string;
+  name:           string;
+  execution_date: string;
+  amount:         number;
+  price:          number;
+  shares_bought:  number;
+  created_at:     string;
+}
+
+export type DcaRunStatus =
+  | "executed"
+  | "already_executed"
+  | "not_today"
+  | "no_price"
+  | "error";
+
+export interface DcaRunResult {
+  plan_id:  string;
+  symbol:   string;
+  name:     string;
+  status:   DcaRunStatus;
+  message:  string;
+  execution?: {
+    price:         number;
+    shares_bought: number;
+    amount:        number;
+    new_shares:    number;
+    new_avg_cost:  number;
+  };
 }
