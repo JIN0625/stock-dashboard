@@ -115,10 +115,11 @@ export default function AddPage() {
           <label className="text-xs font-medium text-muted mb-1.5 block">股票代號 *</label>
           <input
             type="text"
-            inputMode="numeric"
-            placeholder="例：2330、0050、00878"
+            inputMode="text"
+            autoCapitalize="characters"
+            placeholder="例:2330、0050、00981A"
             value={form.symbol}
-            onChange={(e) => handleSymbolChange(e.target.value)}
+            onChange={(e) => handleSymbolChange(e.target.value.toUpperCase())}
             autoComplete="off"
             className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
           />
