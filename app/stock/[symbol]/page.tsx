@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import StockChart from "@/components/StockChart";
 import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
-import type { Holding, HoldingWithQuote } from "@/types";
+import type { Holding, HoldingWithQuote, ConstituentData } from "@/types";
 
 // ════════════════════════════════════════════════════════════
 // 小工具元件
@@ -27,6 +27,128 @@ function InfoRow({
     <div className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
       <span className="text-sm text-muted">{label}</span>
       <span className={`text-sm font-semibold ${valueClass}`}>{value}</span>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// ETF 組成資料卡片
+// ════════════════════════════════════════════════════════════
+
+function WeightBar({ weight, max }: { weight: number; max: number }) {
+  const pct = max > 0 ? Math.round((weight / max) * 100) : 0;
+  return (
+    <div className="flex-1 mx-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+      <div
+        className="h-full bg-red-400 rounded-full"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+function EtfConstituentCard({
+  data,
+  tab,
+  setTab,
+}: {
+  data: ConstituentData | null;
+  tab:  "holdings" | "industry" | "assets";
+  setTab: (t: "holdings" | "industry" | "assets") => void;
+}) {
+  const noData =
+    !data ||
+    (data.topHoldings.length === 0 &&
+     data.industries.length  === 0 &&
+     data.assets.length      === 0);
+
+  if (noData) {
+    return (
+      <div className="bg-white rounded-2xl px-4 py-5 shadow-sm text-center">
+        <p className="text-xs text-muted">目前無法取得 ETF 組成資料</p>
+      </div>
+    );
+  }
+
+  const TABS = [
+    { key: "holdings" as const, label: "前十大持股", date: data.holdingDate  },
+    { key: "industry" as const, label: "行業比重",   date: data.industryDate },
+    { key: "assets"   as const, label: "資產分佈",   date: data.assetDate    },
+  ] as const;
+
+  // 目前顯示的資料列表
+  const activeList =
+    tab === "holdings" ? data.topHoldings.map((h) => ({ name: h.name, weight: h.weight })) :
+    tab === "industry" ? data.industries :
+    data.assets;
+
+  const activeDate = TABS.find((t) => t.key === tab)?.date ?? "";
+  const maxWeight  = activeList.length > 0 ? Math.max(...activeList.map((i) => i.weight)) : 1;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      {/* 標題 */}
+      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+        <p className="text-sm font-bold text-gray-800">ETF 組成</p>
+        {activeDate && (
+          <span className="text-xs text-muted bg-gray-50 px-2 py-0.5 rounded-full">
+            {activeDate}
+          </span>
+        )}
+      </div>
+
+      {/* 分頁 Tab */}
+      <div className="flex gap-1 mx-4 mb-3 bg-gray-100 rounded-xl p-1">
+        {TABS.map(({ key, label }) => {
+          // 若該分類沒資料就略過
+          const list =
+            key === "holdings" ? data.topHoldings :
+            key === "industry" ? data.industries  : data.assets;
+          if (list.length === 0) return null;
+          return (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                tab === key ? "bg-white shadow-sm text-gray-900" : "text-gray-500"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 列表 */}
+      <div className="px-4 pb-4 space-y-2.5">
+        {activeList.length === 0 ? (
+          <p className="text-xs text-muted text-center py-3">無資料</p>
+        ) : (
+          activeList.map((item, i) => (
+            <div key={i} className="flex items-center">
+              {/* 排名 or 色塊 */}
+              {tab === "holdings" ? (
+                <span className="text-xs text-muted w-5 shrink-0 text-right">{i + 1}</span>
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full bg-red-300 shrink-0" style={{ opacity: 1 - i * 0.07 }} />
+              )}
+              {/* 名稱 */}
+              <span className="text-xs text-gray-700 ml-2 w-24 shrink-0 truncate">{item.name}</span>
+              {/* 比例條 */}
+              <WeightBar weight={item.weight} max={maxWeight} />
+              {/* 數值 */}
+              <span className="text-xs font-semibold text-gray-700 w-12 text-right shrink-0">
+                {item.weight.toFixed(2)}%
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* 資料來源 */}
+      <div className="px-4 pb-3">
+        <p className="text-[10px] text-gray-300 text-right">{data.source}</p>
+      </div>
     </div>
   );
 }
@@ -57,9 +179,11 @@ export default function StockDetailPage() {
   const [loading, setLoading]     = useState(true);
   const [pageError, setPageError] = useState("");
 
-  // 編輯 Modal 狀態
   // 成分股
-  const [constituents, setConstituents] = useState<Array<{ symbol: string; name: string; percentage: number }>>([]);
+  const [constituents, setConstituents] = useState<ConstituentData | null>(null);
+  const [constituentTab, setConstituentTab] = useState<"holdings" | "industry" | "assets">("holdings");
+
+  // 編輯 Modal 狀態
 
   const [showEdit, setShowEdit]         = useState(false);
   const [editForm, setEditForm]         = useState<EditForm>({ symbol: "", name: "", shares: "", avg_cost: "", type: "stock" });
@@ -126,7 +250,10 @@ export default function StockDetailPage() {
       // 5. 成分股（ETF 才有，查不到也不影響頁面）
       try {
         const cRes = await fetch(`/api/constituents?symbol=${symbol}`);
-        if (cRes.ok) setConstituents(await cRes.json());
+        if (cRes.ok) {
+          const cData: ConstituentData = await cRes.json();
+          setConstituents(cData);
+        }
       } catch { /* ignore */ }
 
       setHolding({
@@ -422,33 +549,13 @@ export default function StockDetailPage() {
           />
         </div>
 
-        {/* ── 成分股（ETF 才顯示，查不到顯示提示）────── */}
+        {/* ── ETF 組成資料（ETF 才顯示）──────────────── */}
         {holding.type === "etf" && (
-          <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
-            <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">成分股</p>
-            {constituents.length === 0 ? (
-              <p className="text-xs text-muted py-2 text-center">目前無法取得成分股資料</p>
-            ) : (
-              <div className="space-y-2">
-                {constituents.slice(0, 10).map((c) => (
-                  <div key={c.symbol} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-gray-500 w-12">{c.symbol}</span>
-                      <span className="text-xs text-gray-700">{c.name}</span>
-                    </div>
-                    <span className="text-xs font-semibold text-gray-600">
-                      {c.percentage?.toFixed(2) ?? "—"}%
-                    </span>
-                  </div>
-                ))}
-                {constituents.length > 10 && (
-                  <p className="text-xs text-muted text-center pt-1">
-                    顯示前 10 檔，共 {constituents.length} 檔
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+          <EtfConstituentCard
+            data={constituents}
+            tab={constituentTab}
+            setTab={setConstituentTab}
+          />
         )}
 
       </div>
