@@ -65,7 +65,7 @@ function EtfConstituentCard({
   if (noData) {
     return (
       <div className="bg-white rounded-2xl px-4 py-5 shadow-sm text-center">
-        <p className="text-xs text-muted">目前無法取得 ETF 組成資料</p>
+        <p className="text-xs text-muted">目前 Yahoo 股市尚無此 ETF 的成分股資料</p>
       </div>
     );
   }
@@ -76,31 +76,49 @@ function EtfConstituentCard({
     { key: "assets"   as const, label: "資產分佈",   date: data.assetDate    },
   ] as const;
 
-  // 目前顯示的資料列表
+  // 目前顯示的資料列表（holdings 含 Other 已由 API 帶入）
   const activeList =
     tab === "holdings" ? data.topHoldings.map((h) => ({ name: h.name, weight: h.weight })) :
     tab === "industry" ? data.industries :
     data.assets;
 
   const activeDate = TABS.find((t) => t.key === tab)?.date ?? "";
-  const maxWeight  = activeList.length > 0 ? Math.max(...activeList.map((i) => i.weight)) : 1;
+  // Other 權重很小，以最大的真實持股為 bar 基準
+  const realHoldings = data.topHoldings.filter((h) => h.name !== "Other");
+  const maxWeight    = realHoldings.length > 0
+    ? Math.max(...realHoldings.map((h) => h.weight))
+    : (activeList.length > 0 ? Math.max(...activeList.map((i) => i.weight)) : 1);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      {/* 標題 */}
-      <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-        <p className="text-sm font-bold text-gray-800">ETF 組成</p>
-        {activeDate && (
-          <span className="text-xs text-muted bg-gray-50 px-2 py-0.5 rounded-full">
-            {activeDate}
-          </span>
+      {/* 標題列 */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-bold text-gray-800">ETF 組成</p>
+          {activeDate && (
+            <span className="text-xs text-muted bg-gray-50 px-2 py-0.5 rounded-full">
+              {activeDate}
+            </span>
+          )}
+        </div>
+        {/* 持股佔比 chips（只在 holdings tab 且有資料時顯示）*/}
+        {tab === "holdings" && data.topHoldingsWeight > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+              前十大佔比 {data.topHoldingsWeight}%
+            </span>
+            {data.otherWeight > 0.01 && (
+              <span className="text-xs bg-gray-100 text-muted px-2 py-0.5 rounded-full">
+                其他持股 {data.otherWeight}%
+              </span>
+            )}
+          </div>
         )}
       </div>
 
       {/* 分頁 Tab */}
       <div className="flex gap-1 mx-4 mb-3 bg-gray-100 rounded-xl p-1">
         {TABS.map(({ key, label }) => {
-          // 若該分類沒資料就略過
           const list =
             key === "holdings" ? data.topHoldings :
             key === "industry" ? data.industries  : data.assets;
@@ -124,24 +142,28 @@ function EtfConstituentCard({
         {activeList.length === 0 ? (
           <p className="text-xs text-muted text-center py-3">無資料</p>
         ) : (
-          activeList.map((item, i) => (
-            <div key={i} className="flex items-center">
-              {/* 排名 or 色塊 */}
-              {tab === "holdings" ? (
-                <span className="text-xs text-muted w-5 shrink-0 text-right">{i + 1}</span>
-              ) : (
-                <span className="w-2.5 h-2.5 rounded-full bg-red-300 shrink-0" style={{ opacity: 1 - i * 0.07 }} />
-              )}
-              {/* 名稱 */}
-              <span className="text-xs text-gray-700 ml-2 w-24 shrink-0 truncate">{item.name}</span>
-              {/* 比例條 */}
-              <WeightBar weight={item.weight} max={maxWeight} />
-              {/* 數值 */}
-              <span className="text-xs font-semibold text-gray-700 w-12 text-right shrink-0">
-                {item.weight.toFixed(2)}%
-              </span>
-            </div>
-          ))
+          activeList.map((item, i) => {
+            const isOther = item.name === "Other";
+            return (
+              <div key={i} className="flex items-center">
+                {tab === "holdings" ? (
+                  <span className={`text-xs w-5 shrink-0 text-right ${isOther ? "text-gray-300" : "text-muted"}`}>
+                    {isOther ? "—" : i + 1}
+                  </span>
+                ) : (
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-300 shrink-0"
+                        style={{ opacity: Math.max(0.15, 1 - i * 0.07) }} />
+                )}
+                <span className={`text-xs ml-2 w-24 shrink-0 truncate ${isOther ? "text-gray-400" : "text-gray-700"}`}>
+                  {item.name}
+                </span>
+                <WeightBar weight={item.weight} max={maxWeight} />
+                <span className={`text-xs font-semibold w-12 text-right shrink-0 ${isOther ? "text-gray-400" : "text-gray-700"}`}>
+                  {item.weight.toFixed(2)}%
+                </span>
+              </div>
+            );
+          })
         )}
       </div>
 

@@ -47,23 +47,26 @@ export interface PortfolioSummary {
 // ── ETF 成分股 ───────────────────────────────────────────────
 
 export interface TopHolding {
-  rank:   number;
-  name:   string;
-  weight: number; // 百分比，例如 8.97
+  rank:     number;
+  name:     string;
+  symbol?:  string;   // 股票代號（可能缺失）
+  weight:   number;   // 百分比，例如 8.97
 }
 export interface WeightItem {
   name:   string;
   weight: number;
 }
 export interface ConstituentData {
-  symbol:      string;
-  source:      string;       // "Yahoo股市"
-  holdingDate: string;       // "2026/04/01"
-  industryDate:string;
-  assetDate:   string;
-  topHoldings: TopHolding[];
-  industries:  WeightItem[];
-  assets:      WeightItem[];
+  symbol:            string;
+  source:            string;   // "Yahoo股市"
+  holdingDate:       string;   // "2026/04/01"
+  industryDate:      string;
+  assetDate:         string;
+  topHoldings:       TopHolding[];
+  industries:        WeightItem[];
+  assets:            WeightItem[];
+  topHoldingsWeight: number;   // 前十大持股比重加總
+  otherWeight:       number;   // 100 - topHoldingsWeight
 }
 
 // ── DCA ─────────────────────────────────────────────────────
