@@ -5,7 +5,7 @@ import { RefreshCw } from "lucide-react";
 import SummaryBanner from "@/components/SummaryBanner";
 import StockCard from "@/components/StockCard";
 import { getMockHoldingsWithQuotes, getMockSummary } from "@/lib/mockData";
-import type { HoldingWithQuote, PortfolioSummary, DividendRecord } from "@/types";
+import type { HoldingWithQuote, PortfolioSummary, DividendRecord, DividendInfo } from "@/types";
 
 // Switch to false when Supabase + FinMind are set up
 const USE_MOCK = false;
@@ -110,7 +110,23 @@ export default function OverviewPage() {
 
   useEffect(() => { loadData(); }, []);
 
-  const today = new Date().toLocaleDateString("zh-TW", { month: "long", day: "numeric", weekday: "short" });
+  const today    = new Date().toLocaleDateString("zh-TW", { month: "long", day: "numeric", weekday: "short" });
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const cutoffStr = (() => {
+    const d = new Date(); d.setDate(d.getDate() + 90);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const upcomingDividends: (DividendInfo & { name: string; symbol: string; shares: number })[] =
+    holdings
+      .filter(h =>
+        h.dividend?.exDividendDate &&
+        h.dividend.exDividendDate >= todayStr &&
+        h.dividend.exDividendDate <= cutoffStr &&
+        h.dividend.cashDividend > 0
+      )
+      .map(h => ({ ...h.dividend!, name: h.name, symbol: h.symbol, shares: h.shares }))
+      .sort((a, b) => (a.exDividendDate ?? "").localeCompare(b.exDividendDate ?? ""));
 
   return (
     <div className="px-4 pt-12 space-y-4">
@@ -135,6 +151,54 @@ export default function OverviewPage() {
       ) : summary ? (
         <SummaryBanner summary={summary} />
       ) : null}
+
+      {/* 近期配息提醒 */}
+      {!loading && upcomingDividends.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-gray-800">近期配息提醒</h2>
+            <span className="text-xs text-muted">未來 90 天</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {upcomingDividends.map(d => {
+              const [, m, day] = (d.exDividendDate ?? "").split("-");
+              const exLabel   = `${parseInt(m)}/${parseInt(day)} 除息`;
+              const daysLeft  = Math.ceil(
+                (new Date(d.exDividendDate!).getTime() - Date.now()) / (1000 * 86400)
+              );
+              const soon = daysLeft <= 14;
+              return (
+                <div key={d.symbol} className="px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {d.symbol} {d.name}
+                    </p>
+                    <p className="text-xs text-muted mt-0.5">
+                      📅 {exLabel}
+                      {d.paymentDate && (() => {
+                        const [, pm, pd] = d.paymentDate!.split("-");
+                        return ` · 💰 ${parseInt(pm)}/${parseInt(pd)} 發放`;
+                      })()}
+                    </p>
+                  </div>
+                  <div className="text-right flex flex-col items-end gap-1">
+                    <span className="text-xs text-gray-600 font-medium">
+                      現金股利 {d.cashDividend}
+                    </span>
+                    {soon ? (
+                      <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">
+                        即將除息
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted">{daysLeft} 天後</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Holdings */}
       <div className="flex items-center justify-between pt-1">

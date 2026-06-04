@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import StockChart from "@/components/StockChart";
 import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
-import type { Holding, HoldingWithQuote, ConstituentData } from "@/types";
+import type { Holding, HoldingWithQuote, ConstituentData, DividendInfo } from "@/types";
 
 // ════════════════════════════════════════════════════════════
 // 小工具元件
@@ -176,6 +176,93 @@ function EtfConstituentCard({
 }
 
 // ════════════════════════════════════════════════════════════
+// 配息資訊卡片
+// ════════════════════════════════════════════════════════════
+
+function DividendCard({
+  dividend: d,
+  currentPrice,
+}: {
+  dividend: DividendInfo;
+  currentPrice: number;
+}) {
+  const todayStr    = new Date().toISOString().slice(0, 10);
+  const hasUpcoming = !!d.exDividendDate && d.exDividendDate >= todayStr;
+  const yield_      = currentPrice > 0 && d.cashDividend > 0
+    ? (d.cashDividend / currentPrice) * 100
+    : null;
+
+  const daysToEx  = d.exDividendDate
+    ? Math.ceil((new Date(d.exDividendDate).getTime() - Date.now()) / (1000 * 86400))
+    : null;
+  const daysToPay = d.paymentDate
+    ? Math.ceil((new Date(d.paymentDate).getTime() - Date.now()) / (1000 * 86400))
+    : null;
+
+  const exSoon  = daysToEx  !== null && daysToEx  >= 0 && daysToEx  <= 14;
+  const paySoon = daysToPay !== null && daysToPay >= 0 && daysToPay <= 14;
+
+  function fmtDate(s: string | null) {
+    if (!s) return "—";
+    return s.replace(/-/g, "/");
+  }
+
+  return (
+    <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-bold text-gray-800">配息資訊</p>
+        <span className="text-xs text-gray-300">{d.source}</span>
+      </div>
+
+      {(exSoon || paySoon) && (
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {exSoon && (
+            <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full font-medium">
+              即將除息 · {daysToEx} 天後
+            </span>
+          )}
+          {paySoon && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+              即將入帳 · {daysToPay} 天後
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="divide-y divide-gray-50">
+        <div className="flex items-center justify-between py-2.5">
+          <span className="text-sm text-muted">現金股利</span>
+          <span className="text-sm font-semibold text-gray-800">
+            ${d.cashDividend > 0 ? d.cashDividend : "—"}
+          </span>
+        </div>
+        <div className="flex items-center justify-between py-2.5">
+          <span className="text-sm text-muted">除息日</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-800">{fmtDate(d.exDividendDate)}</span>
+            {!hasUpcoming && d.exDividendDate && (
+              <span className="text-xs text-muted bg-gray-100 px-1.5 py-0.5 rounded">已過</span>
+            )}
+          </div>
+        </div>
+        {d.paymentDate && (
+          <div className="flex items-center justify-between py-2.5">
+            <span className="text-sm text-muted">發放日</span>
+            <span className="text-sm font-semibold text-gray-800">{fmtDate(d.paymentDate)}</span>
+          </div>
+        )}
+        {yield_ !== null && (
+          <div className="flex items-center justify-between py-2.5">
+            <span className="text-sm text-muted">殖利率（估）</span>
+            <span className="text-sm font-semibold text-amber-600">{yield_.toFixed(2)}%</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
 // 編輯 Modal 型別
 // ════════════════════════════════════════════════════════════
 
@@ -204,6 +291,9 @@ export default function StockDetailPage() {
   // 成分股
   const [constituents, setConstituents] = useState<ConstituentData | null>(null);
   const [constituentTab, setConstituentTab] = useState<"holdings" | "industry" | "assets">("holdings");
+
+  // 配息
+  const [dividend, setDividend] = useState<DividendInfo | null>(null);
 
   // 編輯 Modal 狀態
 
@@ -275,6 +365,15 @@ export default function StockDetailPage() {
         if (cRes.ok) {
           const cData: ConstituentData = await cRes.json();
           setConstituents(cData);
+        }
+      } catch { /* ignore */ }
+
+      // 6. 配息資料
+      try {
+        const dRes = await fetch(`/api/dividends?symbol=${symbol}`);
+        if (dRes.ok) {
+          const dData: DividendInfo = await dRes.json();
+          if (dData.cashDividend > 0 || dData.exDividendDate) setDividend(dData);
         }
       } catch { /* ignore */ }
 
@@ -570,6 +669,11 @@ export default function StockDetailPage() {
             valueClass={pnlColor(holding.total_pnl_pct)}
           />
         </div>
+
+        {/* ── 配息資訊 ──────────────────────────────── */}
+        {dividend && (
+          <DividendCard dividend={dividend} currentPrice={holding.current_price} />
+        )}
 
         {/* ── ETF 組成資料（ETF 才顯示）──────────────── */}
         {holding.type === "etf" && (

@@ -287,9 +287,9 @@ export async function fetchAllDividends(symbol: string): Promise<DividendInfo[]>
 
 export async function fetchDividendInfo(symbol: string): Promise<DividendInfo> {
   const normalized = normalizeSymbol(symbol);
-  const todayStr = toDateStr(new Date());
+  const todayStr   = toDateStr(new Date());
   const empty: DividendInfo = {
-    symbol: normalized,
+    symbol:         normalized,
     exDividendDate: null,
     paymentDate:    null,
     cashDividend:   0,
@@ -298,8 +298,18 @@ export async function fetchDividendInfo(symbol: string): Promise<DividendInfo> {
     source:         "FinMind",
   };
 
+  // US ticker (all letters, 1-5 chars): go straight to Yahoo
+  if (/^[A-Z]{1,5}$/.test(normalized)) {
+    return fetchYahooDividend(normalized);
+  }
+
   const all = await fetchAllDividends(symbol);
-  if (all.length === 0) return empty;
+
+  // FinMind returned nothing → try Yahoo with .TW suffix
+  if (all.length === 0) {
+    const yahoo = await fetchYahooDividend(`${normalized}.TW`);
+    return yahoo.cashDividend > 0 ? yahoo : empty;
+  }
 
   const upcoming = all
     .filter(d => d.exDividendDate && d.exDividendDate >= todayStr)
@@ -310,6 +320,57 @@ export async function fetchDividendInfo(symbol: string): Promise<DividendInfo> {
     .sort((a, b) => (b.exDividendDate ?? "").localeCompare(a.exDividendDate ?? ""));
 
   return upcoming[0] ?? past[0] ?? empty;
+}
+
+// ── Yahoo Finance 配息（美股 ETF 或 FinMind 查無資料時）────────
+
+async function fetchYahooDividend(yahooSymbol: string): Promise<DividendInfo> {
+  const empty: DividendInfo = {
+    symbol:         yahooSymbol,
+    exDividendDate: null,
+    paymentDate:    null,
+    cashDividend:   0,
+    stockDividend:  0,
+    dividendYield:  null,
+    source:         "Yahoo",
+  };
+
+  try {
+    const url =
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}` +
+      `?events=div&range=2y&interval=1d`;
+
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return empty;
+
+    const json  = await res.json();
+    const divs  = json?.chart?.result?.[0]?.events?.dividends as
+      Record<string, { amount: number; date: number }> | undefined;
+
+    if (!divs) return empty;
+
+    const entries = Object.values(divs).sort((a, b) => b.date - a.date);
+    if (entries.length === 0) return empty;
+
+    const latest   = entries[0];
+    const exDate   = toDateStr(new Date(latest.date * 1000));
+    const currency = json?.chart?.result?.[0]?.meta?.currency as string | undefined;
+
+    return {
+      symbol:         yahooSymbol,
+      exDividendDate: exDate,
+      paymentDate:    null,
+      cashDividend:   latest.amount,
+      stockDividend:  0,
+      dividendYield:  null,
+      source:         currency === "TWD" ? "Yahoo.TW" : "Yahoo",
+    };
+  } catch {
+    return empty;
+  }
 }
 
 // ── 歷史價格 ────────────────────────────────
