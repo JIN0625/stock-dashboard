@@ -19,6 +19,7 @@ function daysDiff(from: string, to: string): number {
 export default function StockCard({ holding: h }: { holding: HoldingWithQuote }) {
   const isUp     = h.change >= 0;
   const div      = h.dividend;
+  const rec      = h.dividendRecord;
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const showUpcoming =
@@ -35,6 +36,22 @@ export default function StockCard({ holding: h }: { holding: HoldingWithQuote })
 
   const exSoon  = daysToEx  !== null && daysToEx  <= 14;
   const paySoon = daysToPay !== null && daysToPay <= 14;
+
+  // Dividend status
+  let divStatus: { label: string; color: string } | null = null;
+  if (div?.exDividendDate) {
+    if (div.exDividendDate > todayStr) {
+      divStatus = { label: "等待除息", color: "bg-gray-100 text-gray-500" };
+    } else if (div.paymentDate && div.paymentDate > todayStr) {
+      divStatus = { label: "等待發放", color: "bg-blue-50 text-blue-500" };
+    } else if (rec) {
+      divStatus = rec.reinvested
+        ? { label: "已再投入", color: "bg-green-100 text-green-700" }
+        : { label: "已入帳", color: "bg-green-100 text-green-700" };
+    } else if (div.paymentDate && div.paymentDate <= todayStr) {
+      divStatus = { label: "可入帳", color: "bg-amber-100 text-amber-600" };
+    }
+  }
 
   return (
     <Link href={`/stock/${h.symbol}`} className="block">
@@ -55,25 +72,19 @@ export default function StockCard({ holding: h }: { holding: HoldingWithQuote })
                 {h.symbol} · {h.type === "etf" ? "ETF" : "個股"}
               </p>
 
-              {/* 配息提醒 */}
+              {/* 配息日期 */}
               {showUpcoming && (
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                    exSoon
-                      ? "bg-orange-100 text-orange-600"
-                      : "bg-amber-50 text-amber-600"
+                    exSoon ? "bg-orange-100 text-orange-600" : "bg-amber-50 text-amber-600"
                   }`}>
-                    📅 {fmtDivDate(div!.exDividendDate!)} 除息
-                    {exSoon && " · 即將除息"}
+                    📅 {fmtDivDate(div!.exDividendDate!)} 除息{exSoon ? " · 即將除息" : ""}
                   </span>
                   {div?.paymentDate && (
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                      paySoon
-                        ? "bg-green-100 text-green-700"
-                        : "bg-blue-50 text-blue-600"
+                      paySoon ? "bg-green-100 text-green-700" : "bg-blue-50 text-blue-600"
                     }`}>
-                      💰 {fmtDivDate(div.paymentDate)} 發放
-                      {paySoon && " · 即將入帳"}
+                      💰 {fmtDivDate(div.paymentDate)} 發放{paySoon ? " · 即將入帳" : ""}
                     </span>
                   )}
                 </div>
@@ -84,6 +95,13 @@ export default function StockCard({ holding: h }: { holding: HoldingWithQuote })
                     最近配息 {div!.cashDividend}
                   </span>
                 </div>
+              )}
+
+              {/* 配息狀態 */}
+              {divStatus && (
+                <span className={`mt-1 inline-block text-xs px-1.5 py-0.5 rounded font-medium ${divStatus.color}`}>
+                  {divStatus.label}
+                </span>
               )}
             </div>
           </div>

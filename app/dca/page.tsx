@@ -422,155 +422,172 @@ export default function DcaPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                onClick={() => !saving && setShowModal(false)} />
-          <div className="relative w-full max-w-md bg-surface rounded-t-3xl px-4 pt-4 pb-10 overflow-y-auto max-h-[92vh]">
-            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900">
-                {editingId ? "編輯定期定額" : "新增定期定額"}
-              </h2>
-              <button onClick={() => !saving && setShowModal(false)}
-                      className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                <X size={16} className="text-gray-500" />
-              </button>
-            </div>
 
-            <div className="space-y-4">
-              {/* 股票代號 */}
-              <div>
-                <label className="text-xs font-medium text-muted mb-1.5 block">股票代號 *</label>
-                <input
-                  type="text" inputMode="text" autoCapitalize="characters"
-                  placeholder="例：2330、0050、00878"
-                  value={form.symbol}
-                  onChange={(e) => handleSymbolChange(e.target.value.toUpperCase())}
-                  autoComplete="off"
-                  className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
-                />
-              </div>
+          {/* Sheet：flex-col，header + 可捲內容 + 固定按鈕 */}
+          <div className="relative w-full max-w-md bg-surface rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden">
 
-              {/* 股票名稱 */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
-                  <label className="text-xs font-medium text-muted">股票名稱 *</label>
-                  <span className="flex items-center gap-2">
-                    {nameStatus === "fetching" && (
-                      <span className="flex items-center gap-1 text-xs text-gray-400">
-                        <Loader2 size={11} className="animate-spin" /> 查詢中…
-                      </span>
-                    )}
-                    {nameStatus === "found" && (
-                      <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                        <CheckCircle2 size={11} /> 已自動填入
-                        {formMarket && <span className="ml-1 text-gray-400 font-normal">· {formMarket}</span>}
-                      </span>
-                    )}
-                    {nameStatus === "not_found" && (
-                      <span className="flex items-center gap-1 text-xs text-orange-500 font-medium">
-                        <AlertCircle size={11} /> 查無此代號
-                      </span>
-                    )}
-                    {(nameStatus === "found" || nameStatus === "fetching") && (
-                      <button type="button" onClick={() => setNameStatus("manual")}
-                              className="flex items-center gap-0.5 text-xs text-gray-400 underline underline-offset-2">
-                        <PenLine size={10} /> 手動輸入
-                      </button>
-                    )}
-                  </span>
-                </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder={nameStatus === "idle" ? "輸入代號後自動填入" : nameStatus === "fetching" ? "查詢中…" : "請輸入股票名稱"}
-                    value={form.name}
-                    readOnly={!nameEditable}
-                    onChange={(e) => nameEditable && setForm((f) => ({ ...f, name: e.target.value }))}
-                    className={`w-full rounded-2xl px-4 py-3.5 text-base shadow-sm outline-none border transition-all
-                      ${nameEditable ? "bg-white text-gray-900 placeholder-gray-300 border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300" : "bg-gray-50 text-gray-500 border-transparent cursor-default select-none"}
-                      ${nameStatus === "found" ? "font-medium text-gray-800" : ""}`}
-                  />
-                  {nameStatus === "fetching" && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
-                      <Loader2 size={16} className="text-gray-300 animate-spin" />
-                    </div>
-                  )}
-                  {nameStatus === "found" && (
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
-                      <Check size={11} className="text-emerald-600" />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* 每月扣款日 */}
-              <div>
-                <label className="text-xs font-medium text-muted mb-1.5 block">每月扣款日 *（1–31）</label>
-                <input
-                  type="number" inputMode="numeric" min={1} max={31}
-                  placeholder="例：6、15、25"
-                  value={form.day_of_month}
-                  onChange={(e) => setForm((f) => ({ ...f, day_of_month: e.target.value }))}
-                  className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
-                />
-              </div>
-
-              {/* 每月投入金額 */}
-              <div>
-                <label className="text-xs font-medium text-muted mb-1.5 block">每月投入金額（元）*</label>
-                <input
-                  type="number" inputMode="decimal"
-                  placeholder="例：3000"
-                  value={form.monthly_amount}
-                  onChange={(e) => setForm((f) => ({ ...f, monthly_amount: e.target.value }))}
-                  className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
-                />
-              </div>
-
-              {/* 類型 */}
-              <div>
-                <label className="text-xs font-medium text-muted mb-1.5 flex items-center gap-2">
-                  類型
-                  {nameStatus === "found" && <span className="text-emerald-600 font-normal">（已自動判斷）</span>}
-                </label>
-                <div className="flex gap-2">
-                  {(["stock", "etf"] as const).map((t) => (
-                    <button key={t} type="button" onClick={() => setForm((f) => ({ ...f, type: t }))}
-                            className={`flex-1 py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm
-                              ${form.type === t ? "bg-red-500 text-white" : "bg-white text-gray-500"}`}>
-                      {form.type === t && <Check size={14} />}
-                      {t === "stock" ? "個股" : "ETF"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 啟用 */}
-              <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3.5">
-                <span className="text-sm text-gray-700 font-medium">立即啟用</span>
-                <button onClick={() => setForm((f) => ({ ...f, is_active: !f.is_active }))} type="button">
-                  {form.is_active
-                    ? <ToggleRight size={30} className="text-red-500" />
-                    : <ToggleLeft  size={30} className="text-gray-300" />}
+            {/* ── 拖曳條 + 標題（不捲動）────────────────── */}
+            <div className="px-4 pt-4 shrink-0">
+              <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-lg font-bold text-gray-900">
+                  {editingId ? "編輯定期定額" : "新增定期定額"}
+                </h2>
+                <button onClick={() => !saving && setShowModal(false)}
+                        className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                  <X size={16} className="text-gray-500" />
                 </button>
               </div>
+            </div>
 
-              {/* 錯誤 */}
-              {formError && (
-                <div className="flex items-center gap-2 text-sm text-red-500 bg-red-50 rounded-xl px-4 py-2.5">
-                  <AlertCircle size={14} className="shrink-0" />
-                  {formError}
+            {/* ── 可捲動的表單欄位 ─────────────────────── */}
+            <div className="flex-1 overflow-y-auto px-4 pb-4">
+              <div className="space-y-4">
+
+                {/* 股票代號 */}
+                <div>
+                  <label className="text-xs font-medium text-muted mb-1.5 block">股票代號 *</label>
+                  <input
+                    type="text" inputMode="text" autoCapitalize="characters"
+                    placeholder="例：2330、0050、00878"
+                    value={form.symbol}
+                    onChange={(e) => handleSymbolChange(e.target.value.toUpperCase())}
+                    autoComplete="off"
+                    className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
+                  />
                 </div>
-              )}
 
-              {/* 儲存 */}
+                {/* 股票名稱 */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                    <label className="text-xs font-medium text-muted">股票名稱 *</label>
+                    <span className="flex items-center gap-2">
+                      {nameStatus === "fetching" && (
+                        <span className="flex items-center gap-1 text-xs text-gray-400">
+                          <Loader2 size={11} className="animate-spin" /> 查詢中…
+                        </span>
+                      )}
+                      {nameStatus === "found" && (
+                        <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                          <CheckCircle2 size={11} /> 已自動填入
+                          {formMarket && <span className="ml-1 text-gray-400 font-normal">· {formMarket}</span>}
+                        </span>
+                      )}
+                      {nameStatus === "not_found" && (
+                        <span className="flex items-center gap-1 text-xs text-orange-500 font-medium">
+                          <AlertCircle size={11} /> 查無此代號
+                        </span>
+                      )}
+                      {(nameStatus === "found" || nameStatus === "fetching") && (
+                        <button type="button" onClick={() => setNameStatus("manual")}
+                                className="flex items-center gap-0.5 text-xs text-gray-400 underline underline-offset-2">
+                          <PenLine size={10} /> 手動輸入
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder={nameStatus === "idle" ? "輸入代號後自動填入" : nameStatus === "fetching" ? "查詢中…" : "請輸入股票名稱"}
+                      value={form.name}
+                      readOnly={!nameEditable}
+                      onChange={(e) => nameEditable && setForm((f) => ({ ...f, name: e.target.value }))}
+                      className={`w-full rounded-2xl px-4 py-3.5 text-base shadow-sm outline-none border transition-all
+                        ${nameEditable ? "bg-white text-gray-900 placeholder-gray-300 border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300" : "bg-gray-50 text-gray-500 border-transparent cursor-default select-none"}
+                        ${nameStatus === "found" ? "font-medium text-gray-800" : ""}`}
+                    />
+                    {nameStatus === "fetching" && (
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                        <Loader2 size={16} className="text-gray-300 animate-spin" />
+                      </div>
+                    )}
+                    {nameStatus === "found" && (
+                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
+                        <Check size={11} className="text-emerald-600" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 每月扣款日 */}
+                <div>
+                  <label className="text-xs font-medium text-muted mb-1.5 block">每月扣款日 *（1–31）</label>
+                  <input
+                    type="number" inputMode="numeric" min={1} max={31}
+                    placeholder="例：6、15、25"
+                    value={form.day_of_month}
+                    onChange={(e) => setForm((f) => ({ ...f, day_of_month: e.target.value }))}
+                    className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
+                  />
+                </div>
+
+                {/* 每月投入金額 */}
+                <div>
+                  <label className="text-xs font-medium text-muted mb-1.5 block">每月投入金額（元）*</label>
+                  <input
+                    type="number" inputMode="decimal"
+                    placeholder="例：3000"
+                    value={form.monthly_amount}
+                    onChange={(e) => setForm((f) => ({ ...f, monthly_amount: e.target.value }))}
+                    className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
+                  />
+                </div>
+
+                {/* 類型 */}
+                <div>
+                  <label className="text-xs font-medium text-muted mb-1.5 flex items-center gap-2">
+                    類型
+                    {nameStatus === "found" && <span className="text-emerald-600 font-normal">（已自動判斷）</span>}
+                  </label>
+                  <div className="flex gap-2">
+                    {(["stock", "etf"] as const).map((t) => (
+                      <button key={t} type="button" onClick={() => setForm((f) => ({ ...f, type: t }))}
+                              className={`flex-1 py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm
+                                ${form.type === t ? "bg-red-500 text-white" : "bg-white text-gray-500"}`}>
+                        {form.type === t && <Check size={14} />}
+                        {t === "stock" ? "個股" : "ETF"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 啟用 */}
+                <div className="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3.5">
+                  <span className="text-sm text-gray-700 font-medium">立即啟用</span>
+                  <button onClick={() => setForm((f) => ({ ...f, is_active: !f.is_active }))} type="button">
+                    {form.is_active
+                      ? <ToggleRight size={30} className="text-red-500" />
+                      : <ToggleLeft  size={30} className="text-gray-300" />}
+                  </button>
+                </div>
+
+                {/* 錯誤 */}
+                {formError && (
+                  <div className="flex items-center gap-2 text-sm text-red-500 bg-red-50 rounded-xl px-4 py-2.5">
+                    <AlertCircle size={14} className="shrink-0" />
+                    {formError}
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+            {/* ── 固定在底部的確認按鈕（不被 BottomNav 蓋住）── */}
+            <div
+              className="shrink-0 px-4 pt-3 bg-surface border-t border-gray-100"
+              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 96px)" }}
+            >
               <button
                 type="button" onClick={handleSave}
                 disabled={saving || nameStatus === "fetching"}
                 className="w-full bg-red-500 text-white rounded-2xl py-4 font-semibold text-base shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {saving && <Loader2 size={16} className="animate-spin" />}
-                {saving ? "儲存中…" : "確認儲存"}
+                {saving ? "儲存中…" : editingId ? "儲存變更" : "確認新增"}
               </button>
             </div>
+
           </div>
         </div>
       )}

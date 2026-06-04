@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import StockChart from "@/components/StockChart";
 import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
-import type { Holding, HoldingWithQuote, ConstituentData, DividendInfo } from "@/types";
+import type { Holding, HoldingWithQuote, ConstituentData, DividendInfo, DividendRecord } from "@/types";
 
 // ════════════════════════════════════════════════════════════
 // 小工具元件
@@ -181,10 +181,12 @@ function EtfConstituentCard({
 
 function DividendCard({
   dividend: d,
+  dividendRecord: rec,
   currentPrice,
 }: {
-  dividend: DividendInfo;
-  currentPrice: number;
+  dividend:       DividendInfo;
+  dividendRecord: DividendRecord | null;
+  currentPrice:   number;
 }) {
   const todayStr    = new Date().toISOString().slice(0, 10);
   const hasUpcoming = !!d.exDividendDate && d.exDividendDate >= todayStr;
@@ -202,26 +204,60 @@ function DividendCard({
   const exSoon  = daysToEx  !== null && daysToEx  >= 0 && daysToEx  <= 14;
   const paySoon = daysToPay !== null && daysToPay >= 0 && daysToPay <= 14;
 
+  // Status derivation
+  let statusLabel = "";
+  let statusStyle = "";
+  if (!d.exDividendDate) {
+    statusLabel = "";
+  } else if (d.exDividendDate > todayStr) {
+    statusLabel = "等待除息";
+    statusStyle = "bg-gray-100 text-gray-500";
+  } else if (d.paymentDate && d.paymentDate > todayStr) {
+    statusLabel = "等待發放";
+    statusStyle = "bg-blue-50 text-blue-500";
+  } else if (rec) {
+    statusLabel = rec.reinvested ? "已再投入" : "已入帳";
+    statusStyle = "bg-green-100 text-green-700";
+  } else if (d.paymentDate && d.paymentDate <= todayStr) {
+    statusLabel = "可入帳";
+    statusStyle = "bg-amber-100 text-amber-600";
+  }
+
   function fmtDate(s: string | null) {
     if (!s) return "—";
     return s.replace(/-/g, "/");
   }
 
+  function fmtCreatedAt(s: string) {
+    return new Date(s).toLocaleDateString("zh-TW", {
+      month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+  }
+
   return (
     <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+      {/* 標題列 */}
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm font-bold text-gray-800">配息資訊</p>
-        <span className="text-xs text-gray-300">{d.source}</span>
+        <div className="flex items-center gap-2">
+          {statusLabel && (
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyle}`}>
+              {statusLabel}
+            </span>
+          )}
+          <span className="text-xs text-gray-300">{d.source}</span>
+        </div>
       </div>
 
+      {/* 即將提醒 */}
       {(exSoon || paySoon) && (
         <div className="flex gap-2 mb-3 flex-wrap">
-          {exSoon && (
+          {exSoon && daysToEx !== null && (
             <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full font-medium">
               即將除息 · {daysToEx} 天後
             </span>
           )}
-          {paySoon && (
+          {paySoon && daysToPay !== null && (
             <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
               即將入帳 · {daysToPay} 天後
             </span>
@@ -229,11 +265,12 @@ function DividendCard({
         </div>
       )}
 
+      {/* 配息基本資料 */}
       <div className="divide-y divide-gray-50">
         <div className="flex items-center justify-between py-2.5">
           <span className="text-sm text-muted">現金股利</span>
           <span className="text-sm font-semibold text-gray-800">
-            ${d.cashDividend > 0 ? d.cashDividend : "—"}
+            {d.cashDividend > 0 ? `$${d.cashDividend}` : "—"}
           </span>
         </div>
         <div className="flex items-center justify-between py-2.5">
@@ -248,7 +285,12 @@ function DividendCard({
         {d.paymentDate && (
           <div className="flex items-center justify-between py-2.5">
             <span className="text-sm text-muted">發放日</span>
-            <span className="text-sm font-semibold text-gray-800">{fmtDate(d.paymentDate)}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-800">{fmtDate(d.paymentDate)}</span>
+              {d.paymentDate > todayStr && (
+                <span className="text-xs text-muted bg-gray-100 px-1.5 py-0.5 rounded">未到</span>
+              )}
+            </div>
           </div>
         )}
         {yield_ !== null && (
@@ -258,6 +300,47 @@ function DividendCard({
           </div>
         )}
       </div>
+
+      {/* 入帳紀錄（若有） */}
+      {rec && (
+        <div className="mt-3 border-t border-gray-50 pt-3">
+          <p className="text-xs font-semibold text-muted mb-2">入帳紀錄</p>
+          <div className="divide-y divide-gray-50">
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm text-muted">現金入帳</span>
+              <span className="text-sm font-semibold text-green-700">+${Number(rec.cash_received).toLocaleString("zh-TW", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm text-muted">處理方式</span>
+              <span className="text-sm font-semibold text-gray-800">
+                {rec.reinvested ? "自動再投入" : "只記錄現金"}
+              </span>
+            </div>
+            {rec.reinvested && rec.shares_bought != null && (
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm text-muted">買入股數</span>
+                <span className="text-sm font-semibold text-gray-800">
+                  {Number(rec.shares_bought).toFixed(4)} 股
+                  {rec.reinvest_price != null && (
+                    <span className="text-muted font-normal"> @ ${rec.reinvest_price}</span>
+                  )}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between py-2">
+              <span className="text-sm text-muted">入帳時間</span>
+              <span className="text-sm text-gray-600">{fmtCreatedAt(rec.created_at)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 狀態說明（未到發放日） */}
+      {!rec && d.paymentDate && d.paymentDate > todayStr && (
+        <p className="mt-3 text-xs text-muted italic border-t border-gray-50 pt-3">
+          尚未到發放日，不會入帳
+        </p>
+      )}
     </div>
   );
 }
@@ -293,7 +376,8 @@ export default function StockDetailPage() {
   const [constituentTab, setConstituentTab] = useState<"holdings" | "industry" | "assets">("holdings");
 
   // 配息
-  const [dividend, setDividend] = useState<DividendInfo | null>(null);
+  const [dividend, setDividend]           = useState<DividendInfo | null>(null);
+  const [dividendRecord, setDividendRecord] = useState<DividendRecord | null>(null);
 
   // 編輯 Modal 狀態
 
@@ -368,12 +452,24 @@ export default function StockDetailPage() {
         }
       } catch { /* ignore */ }
 
-      // 6. 配息資料
+      // 6. 配息資料 + 入帳紀錄
       try {
-        const dRes = await fetch(`/api/dividends?symbol=${symbol}`);
+        const [dRes, rRes] = await Promise.all([
+          fetch(`/api/dividends?symbol=${symbol}`),
+          fetch("/api/dividends/records"),
+        ]);
         if (dRes.ok) {
           const dData: DividendInfo = await dRes.json();
-          if (dData.cashDividend > 0 || dData.exDividendDate) setDividend(dData);
+          if (dData.cashDividend > 0 || dData.exDividendDate) {
+            setDividend(dData);
+            if (rRes.ok) {
+              const allRecords: DividendRecord[] = await rRes.json();
+              const match = allRecords.find(
+                r => r.symbol === symbol && r.ex_dividend_date === dData.exDividendDate
+              ) ?? null;
+              setDividendRecord(match);
+            }
+          }
         }
       } catch { /* ignore */ }
 
@@ -672,7 +768,11 @@ export default function StockDetailPage() {
 
         {/* ── 配息資訊 ──────────────────────────────── */}
         {dividend && (
-          <DividendCard dividend={dividend} currentPrice={holding.current_price} />
+          <DividendCard
+            dividend={dividend}
+            dividendRecord={dividendRecord}
+            currentPrice={holding.current_price}
+          />
         )}
 
         {/* ── ETF 組成資料（ETF 才顯示）──────────────── */}

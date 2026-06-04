@@ -38,7 +38,40 @@ export interface DividendRecord {
   shares_owned:     number;
   cash_received:    number;
   reinvested:       boolean;
+  shares_bought:    number | null;
+  reinvest_price:   number | null;
   created_at:       string;
+}
+
+export interface UserSettings {
+  dividend_reinvest_enabled: boolean;
+}
+
+export type DivSyncStatus =
+  | "recorded"
+  | "reinvested"
+  | "already_recorded"
+  | "not_yet_payable";
+
+export interface DivSyncItem {
+  symbol:           string;
+  name:             string;
+  ex_dividend_date: string;
+  payment_date:     string | null;
+  cash_dividend:    number;
+  cash_received:    number;
+  status:           DivSyncStatus;
+  message:          string;
+  shares_bought?:   number;
+  reinvest_price?:  number;
+  new_shares?:      number;
+  new_avg_cost?:    number;
+}
+
+export interface DivSyncResponse {
+  synced:      number;
+  total_cash:  number;
+  results:     DivSyncItem[];
 }
 
 export interface HoldingWithQuote extends Holding {
@@ -53,7 +86,8 @@ export interface HoldingWithQuote extends Holding {
   quote_date?:   string;
   market?:       string;
   history?:      PricePoint[];
-  dividend?:     DividendInfo | null;
+  dividend?:       DividendInfo | null;
+  dividendRecord?: DividendRecord | null;
 }
 
 export interface PricePoint {
