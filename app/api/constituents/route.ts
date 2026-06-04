@@ -104,7 +104,8 @@ function applyOther(topHoldings: TopHolding[]): {
   const topHoldingsWeight = Math.round(sum * 100) / 100;
   const otherWeight       = Math.max(0, Math.round((100 - topHoldingsWeight) * 100) / 100);
 
-  if (otherWeight > 0.01) {
+  // topHoldings 為空時不補 Other，避免顯示 "Other 100%"
+  if (top10.length > 0 && otherWeight > 0.01) {
     top10.push({ rank: 11, name: "Other", symbol: "", weight: otherWeight });
   }
   return { topHoldings: top10, topHoldingsWeight, otherWeight };
@@ -183,30 +184,73 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+// 在「前十大持股」區塊中應排除的非持股名稱（資產類別 / 地理區域 / 產業等）
+const HOLDING_SECTION_EXCLUDES = new Set([
+  // 資產類別
+  "股票","現金","債券","其他","其他持股","其他產業","其他地區",
+  "OTHER","CASH","BONDS","EQUITY","FIXED INCOME",
+  "Fixed Income","Cash & Equivalents","Cash and Equivalents",
+  // 地理區域
+  "北美","南美","歐洲","亞太","非洲","中東",
+  "NORTH AMERICA","SOUTH AMERICA","EUROPE","ASIA PACIFIC",
+  "North America","South America","Europe","Asia Pacific",
+  "Latin America","LATIN AMERICA","Middle East","MIDDLE EAST",
+  // 常見產業詞（不太可能是公司名）
+  "科技","金融","能源","醫療","工業","材料","通訊",
+  "Technology","Financials","Health Care","Energy",
+  "Materials","Utilities","Industrials","Communication",
+  "TECHNOLOGY","FINANCIALS","HEALTH CARE","ENERGY",
+  "MATERIALS","UTILITIES","INDUSTRIALS","COMMUNICATION",
+]);
+
 function extractSectionItems(
   text:         string,
   sectionTitle: string,
   stopTitles:   string[],
+  filterFn?:    (name: string) => boolean,
 ): WeightItem[] {
   const startIdx = text.indexOf(sectionTitle);
   if (startIdx === -1) return [];
-  let endIdx = Math.min(text.length, startIdx + sectionTitle.length + 3000);
+
+  let endIdx = Math.min(text.length, startIdx + sectionTitle.length + 4000);
   for (const stop of stopTitles) {
     const idx = text.indexOf(stop, startIdx + sectionTitle.length);
     if (idx !== -1 && idx < endIdx) endIdx = idx;
   }
+
   const section = text.slice(startIdx + sectionTitle.length, endIdx);
-  const items: WeightItem[] = [];
-  const RE = /([一-鿿][一-鿿\w（）【】&.-]{0,14})\s{0,4}([\d]{1,3}(?:\.[\d]{1,4}))%/g;
+  const items:   WeightItem[] = [];
+
+  /**
+   * 支援中英文持股名稱格式：
+   *   台積電 8.97%
+   *   NVIDIA CORP 10.38%
+   *   KLA-TENCOR CORP 3.53%
+   *   ADVANCED MICRO DEVICES 5.44%
+   *
+   * 規則：
+   * - 首字必須是字母（中英文），不能是數字，避免誤抓日期或代號
+   * - 名稱允許空格、.、,、-、&、()、/ 等常見符號
+   * - 懶惰量詞 {1,60}? 搭配後方 \s{0,6}\d+% 確保名稱不吞掉數字
+   */
+  const RE = /([A-Za-z一-鿿][A-Za-z0-9一-鿿\s.,&()／\-]{1,60}?)\s{0,6}(\d{1,3}(?:\.\d{1,4})?)%/g;
+
   let m: RegExpExecArray | null;
   const seen = new Set<string>();
+
   while ((m = RE.exec(section)) !== null) {
-    const name = m[1].trim();
+    // 清除名稱尾部多餘空白
+    const name = m[1].replace(/\s+$/, "").trim();
     const w    = parseFloat(m[2]);
+
     if (!name || w <= 0 || w > 100 || seen.has(name)) continue;
+    // 外部過濾函式（例如持股區塊的排除清單）
+    if (filterFn && !filterFn(name)) continue;
+
     seen.add(name);
     items.push({ name, weight: w });
   }
+
   return items.sort((a, b) => b.weight - a.weight).slice(0, 20);
 }
 
@@ -218,23 +262,47 @@ function extractDate(text: string): string {
 function parseFromHtmlText(html: string, symbol: string): ConstituentData {
   const text = stripHtml(html);
 
+  // 前十大持股：傳入過濾函式，排除資產/地區/產業類名稱
   const holdingItems = extractSectionItems(
-    text, "前十大持股",
-    ["行業比重","行業比例","產業比重","資產分佈","資產分布","資產配置"],
+    text,
+    "前十大持股",
+    [
+      "行業比重","行業比例","產業比重",
+      "資產分佈","資產分布","資產配置",
+      "績效表現","相關ETF","相關 ETF",
+    ],
+    (name) => {
+      // 1. 太短的詞跳過（單一中文字或 1-2 個英文字母）
+      if (name.length < 3) return false;
+      // 2. 在排除清單中
+      if (HOLDING_SECTION_EXCLUDES.has(name.trim())) return false;
+      // 3. 純數字或日期格式
+      if (/^\d+$/.test(name)) return false;
+      if (/^\d{4}[\/\-]/.test(name)) return false;
+      return true;
+    },
   );
-  const rawTop: TopHolding[] = holdingItems.map((item, i) => ({
+  // 前十大取前 10
+  const rawTop: TopHolding[] = holdingItems.slice(0, 10).map((item, i) => ({
     rank: i + 1, name: item.name, symbol: "", weight: item.weight,
   }));
 
+  // 行業比重
   const industries = extractSectionItems(
     text,
-    text.includes("行業比重") ? "行業比重" : text.includes("行業比例") ? "行業比例" : "產業比重",
-    ["資產分佈","資產分布","資產配置","前十大"],
+    text.includes("行業比重") ? "行業比重"
+      : text.includes("行業比例") ? "行業比例"
+      : "產業比重",
+    ["資產分佈","資產分布","資產配置","前十大","績效表現","相關ETF"],
   );
+
+  // 資產分佈
   const assets = extractSectionItems(
     text,
-    text.includes("資產分佈") ? "資產分佈" : text.includes("資產分布") ? "資產分布" : "資產配置",
-    ["前十大","行業","產業"],
+    text.includes("資產分佈") ? "資產分佈"
+      : text.includes("資產分布") ? "資產分布"
+      : "資產配置",
+    ["前十大","行業","產業","績效表現","相關ETF"],
   );
 
   const date = extractDate(text);
