@@ -316,17 +316,19 @@ export default function OverviewPage() {
       <div className="px-4 pt-12 space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-2.5">
             <Image
               src="/icon2-512.png"
               alt="Daily Stock"
-              width={120}
-              height={120}
+              width={36}
+              height={36}
               priority
-              className="mb-3 h-auto w-[120px]"
+              className="h-9 w-9 object-contain shrink-0"
             />
-            <h1 className="text-xl font-bold text-gray-900">我的投資組合</h1>
-            <p className="text-xs text-muted">{today}</p>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">我的投資組合</h1>
+              <p className="text-xs text-muted">{today}</p>
+            </div>
           </div>
           <button
             onClick={loadData}
