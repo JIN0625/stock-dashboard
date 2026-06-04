@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import AuthGuard from "@/components/AuthGuard";
-import UserMenu from "@/components/UserMenu";
 
 export const metadata: Metadata = {
   title: "Daily Stock",
@@ -38,10 +37,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-surface min-h-screen font-sans antialiased">
         <AuthGuard>
           <div className="max-w-md mx-auto min-h-screen relative">
-            <div className="absolute top-3 right-4 z-30">
-              <UserMenu />
-            </div>
-
             <main className="pb-24 pt-0">{children}</main>
 
             <BottomNav />

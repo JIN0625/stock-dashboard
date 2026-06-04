@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, X, ChevronRight } from "lucide-react";
 import Image from "next/image";
+import UserMenu from "@/components/UserMenu";
 import SummaryBanner from "@/components/SummaryBanner";
 import StockCard from "@/components/StockCard";
 import { getMockHoldingsWithQuotes, getMockSummary } from "@/lib/mockData";
@@ -313,31 +314,25 @@ export default function OverviewPage() {
 
   return (
     <>
-      <div className="px-4 pt-12 space-y-4">
+      <div className="px-4 pt-8 space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+        <header className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-3">
             <Image
               src="/icon2-512.png"
               alt="Daily Stock"
-              width={36}
-              height={36}
+              width={44}
+              height={44}
               priority
-              className="h-9 w-9 object-contain shrink-0"
+              className="h-11 w-11 object-contain shrink-0"
             />
             <div>
-              <h1 className="text-xl font-bold text-gray-900">我的投資組合</h1>
-              <p className="text-xs text-muted">{today}</p>
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">我的投資組合</h1>
+              <p className="text-xs text-muted mt-0.5">{today}</p>
             </div>
           </div>
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="w-9 h-9 bg-white rounded-full shadow-sm flex items-center justify-center active:scale-95 transition-transform"
-          >
-            <RefreshCw size={16} className={`text-gray-500 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
+          <UserMenu />
+        </header>
 
         {/* Summary banner */}
         {loading ? (
