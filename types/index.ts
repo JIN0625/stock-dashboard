@@ -16,6 +16,31 @@ export interface Quote {
   date:       string;
 }
 
+export interface DividendInfo {
+  symbol:          string;
+  exDividendDate:  string | null;
+  paymentDate:     string | null;
+  cashDividend:    number;
+  stockDividend:   number;
+  dividendYield:   number | null;
+  source:          string;
+}
+
+export interface DividendRecord {
+  id:               string;
+  user_id:          string;
+  symbol:           string;
+  name:             string;
+  ex_dividend_date: string;
+  payment_date:     string | null;
+  cash_dividend:    number;
+  stock_dividend:   number;
+  shares_owned:     number;
+  cash_received:    number;
+  reinvested:       boolean;
+  created_at:       string;
+}
+
 export interface HoldingWithQuote extends Holding {
   current_price: number;
   change:        number;
@@ -28,6 +53,7 @@ export interface HoldingWithQuote extends Holding {
   quote_date?:   string;
   market?:       string;
   history?:      PricePoint[];
+  dividend?:     DividendInfo | null;
 }
 
 export interface PricePoint {
@@ -36,12 +62,14 @@ export interface PricePoint {
 }
 
 export interface PortfolioSummary {
-  total_assets:   number;
-  total_cost:     number;
-  total_pnl:      number;
-  total_pnl_pct:  number;
-  daily_pnl:      number;
-  daily_pnl_pct:  number;
+  total_assets:          number;
+  total_cost:            number;
+  total_pnl:             number;
+  total_pnl_pct:         number;
+  daily_pnl:             number;
+  daily_pnl_pct:         number;
+  ytd_dividends?:        number;
+  estimated_dividends?:  number;
 }
 
 // ── ETF 成分股 ───────────────────────────────────────────────

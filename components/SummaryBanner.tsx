@@ -4,6 +4,12 @@ import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
 import type { PortfolioSummary } from "@/types";
 
 export default function SummaryBanner({ summary: s }: { summary: PortfolioSummary }) {
+  const hasDividends =
+    (s.ytd_dividends !== undefined && s.ytd_dividends > 0) ||
+    (s.estimated_dividends !== undefined && s.estimated_dividends > 0);
+
+  const totalPnlWithDiv = s.total_pnl + (s.ytd_dividends ?? 0);
+
   return (
     <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 text-white shadow-xl">
       {/* Total assets */}
@@ -28,7 +34,7 @@ export default function SummaryBanner({ summary: s }: { summary: PortfolioSummar
         </span>
       </div>
 
-      {/* Divider */}
+      {/* P&L row */}
       <div className="border-t border-white/10 pt-4">
         <div className="flex justify-between">
           <div>
@@ -51,6 +57,32 @@ export default function SummaryBanner({ summary: s }: { summary: PortfolioSummar
           </div>
         </div>
       </div>
+
+      {/* Dividend row — shown only when there's data */}
+      {hasDividends && (
+        <div className="border-t border-white/10 pt-4 mt-4">
+          <div className="flex justify-between">
+            <div>
+              <p className="text-xs text-gray-400">今年已領股息</p>
+              <p className="text-base font-semibold text-yellow-300">
+                +${formatCurrency(s.ytd_dividends ?? 0, 0)}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400">預估未來配息</p>
+              <p className="text-base font-semibold text-blue-300">
+                ${formatCurrency(s.estimated_dividends ?? 0, 0)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-400">含股息總損益</p>
+              <p className={`text-base font-semibold ${pnlColor(totalPnlWithDiv)}`}>
+                {formatChange(totalPnlWithDiv, 0)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

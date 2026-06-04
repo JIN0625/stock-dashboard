@@ -223,6 +223,95 @@ export async function fetchLatestQuote(symbol: string): Promise<FinMindQuote | n
   return null;
 }
 
+// ── 配息資料 ────────────────────────────────
+
+export interface DividendInfo {
+  symbol:         string;
+  exDividendDate: string | null;
+  paymentDate:    string | null;
+  cashDividend:   number;
+  stockDividend:  number;
+  dividendYield:  number | null;
+  source:         string;
+}
+
+type RawDivRecord = Record<string, unknown>;
+
+function getExDate(r: RawDivRecord): string {
+  return String(r.ex_right_trading_day ?? r.ex_dividend_date ?? r.ExRightTradingDate ?? "");
+}
+function getPayDate(r: RawDivRecord): string {
+  return String(r.cash_dividend_pay_date ?? r.payment_date ?? r.CashDividendPaymentDate ?? "");
+}
+function getCashDiv(r: RawDivRecord): number {
+  return Number(r.cash_dividend ?? r.CashDividend ?? 0);
+}
+function getStockDiv(r: RawDivRecord): number {
+  return Number(r.stock_dividend ?? r.StockDividend ?? 0);
+}
+
+export async function fetchAllDividends(symbol: string): Promise<DividendInfo[]> {
+  const normalized = normalizeSymbol(symbol);
+  const today = new Date();
+  const twoYearsAgo = new Date(today);
+  twoYearsAgo.setFullYear(today.getFullYear() - 2);
+
+  const params = new URLSearchParams({
+    dataset:    "TaiwanStockDividend",
+    data_id:    normalized,
+    start_date: toDateStr(twoYearsAgo),
+    token:      TOKEN,
+  });
+
+  try {
+    const res = await fetch(`${BASE}?${params}`, { next: { revalidate: 3600 } });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const records: RawDivRecord[] = json.data ?? [];
+
+    return records
+      .filter(r => getExDate(r))
+      .map(r => ({
+        symbol:         normalized,
+        exDividendDate: getExDate(r) || null,
+        paymentDate:    getPayDate(r) || null,
+        cashDividend:   getCashDiv(r),
+        stockDividend:  getStockDiv(r),
+        dividendYield:  null,
+        source:         "FinMind",
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchDividendInfo(symbol: string): Promise<DividendInfo> {
+  const normalized = normalizeSymbol(symbol);
+  const todayStr = toDateStr(new Date());
+  const empty: DividendInfo = {
+    symbol: normalized,
+    exDividendDate: null,
+    paymentDate:    null,
+    cashDividend:   0,
+    stockDividend:  0,
+    dividendYield:  null,
+    source:         "FinMind",
+  };
+
+  const all = await fetchAllDividends(symbol);
+  if (all.length === 0) return empty;
+
+  const upcoming = all
+    .filter(d => d.exDividendDate && d.exDividendDate >= todayStr)
+    .sort((a, b) => (a.exDividendDate ?? "").localeCompare(b.exDividendDate ?? ""));
+
+  const past = all
+    .filter(d => d.exDividendDate && d.exDividendDate < todayStr)
+    .sort((a, b) => (b.exDividendDate ?? "").localeCompare(a.exDividendDate ?? ""));
+
+  return upcoming[0] ?? past[0] ?? empty;
+}
+
 // ── 歷史價格 ────────────────────────────────
 
 export async function fetchPriceHistory(

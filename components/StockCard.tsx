@@ -5,12 +5,32 @@ import Sparkline from "./Sparkline";
 import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
 import type { HoldingWithQuote } from "@/types";
 
+function fmtDivDate(dateStr: string): string {
+  const [, m, d] = dateStr.split("-");
+  return `${parseInt(m)}/${parseInt(d)}`;
+}
+
 interface StockCardProps {
   holding: HoldingWithQuote;
 }
 
 export default function StockCard({ holding: h }: StockCardProps) {
   const isUp = h.change >= 0;
+  const div  = h.dividend;
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const showUpcoming =
+    div &&
+    div.exDividendDate &&
+    div.exDividendDate >= todayStr &&
+    div.cashDividend > 0;
+
+  const showRecent =
+    !showUpcoming &&
+    div &&
+    div.cashDividend > 0 &&
+    div.exDividendDate &&
+    div.exDividendDate < todayStr;
 
   return (
     <Link href={`/stock/${h.symbol}`} className="block">
@@ -31,6 +51,26 @@ export default function StockCard({ holding: h }: StockCardProps) {
               <p className="text-xs text-muted">
                 {h.symbol} · {h.type === "etf" ? "ETF" : "個股"}
               </p>
+              {/* 配息提醒 */}
+              {showUpcoming && (
+                <div className="flex gap-1.5 mt-1 flex-wrap">
+                  <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">
+                    {fmtDivDate(div!.exDividendDate!)} 除息
+                  </span>
+                  {div!.paymentDate && (
+                    <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                      {fmtDivDate(div!.paymentDate)} 發放
+                    </span>
+                  )}
+                </div>
+              )}
+              {showRecent && (
+                <div className="mt-1">
+                  <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                    最近配息 {div!.cashDividend}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
