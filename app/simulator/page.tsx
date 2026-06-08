@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { RefreshCw, ArrowDown, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { RefreshCw, ArrowDown, Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
 
 // ════════════════════════════════════════════════════════════
@@ -18,8 +18,33 @@ interface HoldingWithPrice {
   current_price: number;
 }
 
-type SimMode   = "buy" | "sell" | "swap";
+type SimMode    = "buy" | "sell" | "swap";
 type NameStatus = "idle" | "fetching" | "found" | "not_found" | "manual";
+
+interface SellInfo {
+  symbol:  string;
+  name:    string;
+  shares:  number;
+  price:   number;
+  avgCost: number;
+}
+
+interface BuyInfo {
+  symbol: string;
+  name:   string;
+  shares: number;
+  price:  number;
+  type:   "stock" | "etf";
+}
+
+interface SimResult {
+  mode:      SimMode;
+  sell?:     SellInfo;
+  buy?:      BuyInfo;
+  sellAmt:   number;
+  buyAmt:    number;
+  remainCash: number;
+}
 
 // ════════════════════════════════════════════════════════════
 // 共用小元件
@@ -79,7 +104,6 @@ function SymbolLookupInput({
         onChange={(e) => onChange(e.target.value.toUpperCase())}
         className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
       />
-      {/* 狀態提示 */}
       {value.length >= 4 && (
         <div className="mt-1.5 flex items-center gap-2">
           {status === "fetching" && (
@@ -109,7 +133,7 @@ function SymbolLookupInput({
 }
 
 // ════════════════════════════════════════════════════════════
-// 自動查詢 hook（代號 → 名稱 + 報價）
+// 自動查詢 hook（代號 → 名稱 + 報價 + 類型）
 // ════════════════════════════════════════════════════════════
 
 function useLookup() {
@@ -117,29 +141,29 @@ function useLookup() {
   const [name,       setName]       = useState("");
   const [price,      setPrice]      = useState<number | null>(null);
   const [market,     setMarket]     = useState("");
+  const [stockType,  setStockType]  = useState<"stock" | "etf">("stock");
   const [status,     setStatus]     = useState<NameStatus>("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function setSymbol(v: string) {
     setSymbolRaw(v);
-    setName(""); setPrice(null); setMarket(""); setStatus("idle");
+    setName(""); setPrice(null); setMarket(""); setStatus("idle"); setStockType("stock");
     if (timer.current) clearTimeout(timer.current);
     const trimmed = v.trim().toUpperCase();
     if (trimmed.length < 4) return;
     timer.current = setTimeout(async () => {
       setStatus("fetching");
       try {
-        // 查名稱
         const infoRes = await fetch(`/api/stock-info?symbol=${encodeURIComponent(trimmed)}`);
         if (infoRes.ok) {
           const info = await infoRes.json();
           setName(info.name ?? "");
           setMarket(info.market ?? "");
+          setStockType(info.type === "etf" ? "etf" : "stock");
           setStatus("found");
         } else {
           setStatus("not_found");
         }
-        // 查報價
         const qRes = await fetch(`/api/quotes?symbols=${trimmed}`);
         if (qRes.ok) {
           const q = await qRes.json();
@@ -152,23 +176,113 @@ function useLookup() {
   }
 
   function reset() {
-    setSymbolRaw(""); setName(""); setPrice(null); setMarket(""); setStatus("idle");
+    setSymbolRaw(""); setName(""); setPrice(null); setMarket(""); setStatus("idle"); setStockType("stock");
   }
 
-  return { symbol, name, price, market, status, setSymbol, reset };
+  return { symbol, name, price, market, stockType, status, setSymbol, reset };
+}
+
+// ════════════════════════════════════════════════════════════
+// 確認套用 Modal
+// ════════════════════════════════════════════════════════════
+
+function ConfirmModal({
+  result, applying, onConfirm, onCancel,
+}: {
+  result:    SimResult;
+  applying:  boolean;
+  onConfirm: () => void;
+  onCancel:  () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-white rounded-t-3xl p-6 pb-10 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-900">確認套用試算結果</h3>
+          <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100">
+            <X size={14} className="text-gray-500" />
+          </button>
+        </div>
+
+        <div className="bg-gray-50 rounded-2xl p-4 space-y-2 text-sm">
+          {result.sell && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">賣出</span>
+              <span className="font-semibold text-gray-900">
+                {result.sell.name} ({result.sell.symbol}) {result.sell.shares} 股
+              </span>
+            </div>
+          )}
+          {result.buy && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">買入</span>
+              <span className="font-semibold text-gray-900">
+                {result.buy.name} ({result.buy.symbol}) {result.buy.shares.toFixed(4)} 股
+              </span>
+            </div>
+          )}
+          {result.sellAmt > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">賣出金額</span>
+              <span className="font-semibold">${formatCurrency(result.sellAmt)}</span>
+            </div>
+          )}
+          {result.buyAmt > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">買入金額</span>
+              <span className="font-semibold">${formatCurrency(result.buyAmt)}</span>
+            </div>
+          )}
+          {result.remainCash > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">剩餘現金</span>
+              <span className="font-semibold">${formatCurrency(result.remainCash)}</span>
+            </div>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-400 text-center">
+          此操作將直接更新您的庫存資料。
+        </p>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            disabled={applying}
+            className="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-600 text-sm font-semibold active:scale-95 transition-transform"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={applying}
+            className="flex-1 py-3 rounded-2xl bg-gray-900 text-white text-sm font-semibold active:scale-95 transition-transform flex items-center justify-center gap-2"
+          >
+            {applying ? <Loader2 size={14} className="animate-spin" /> : null}
+            確認套用
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ════════════════════════════════════════════════════════════
 // 只買 Panel
 // ════════════════════════════════════════════════════════════
 
-function BuyPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
+function BuyPanel({
+  holdings, onResult,
+}: {
+  holdings: HoldingWithPrice[];
+  onResult: (r: SimResult | null) => void;
+}) {
   const lookup = useLookup();
   const [inputMode, setInputMode]   = useState<"amount" | "shares">("amount");
   const [inputAmount, setInputAmount] = useState("");
   const [inputShares, setInputShares] = useState("");
 
-  // 計算
   const sym      = lookup.symbol.toUpperCase();
   const price    = lookup.price;
   const existing = holdings.find((h) => h.symbol === sym);
@@ -181,17 +295,29 @@ function BuyPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
   const buyShares = inputMode === "amount" ? computedShares : Number(inputShares) || null;
   const buyCost   = inputMode === "shares" ? computedAmount : Number(inputAmount) || null;
 
-  const hasResult = price && buyShares && buyShares > 0;
+  const hasResult = !!(price && buyShares && buyShares > 0);
 
   let newShares = 0, newAvgCost = 0;
   if (hasResult && price) {
-    newShares  = (existing?.shares ?? 0) + buyShares;
+    newShares  = (existing?.shares ?? 0) + buyShares!;
     newAvgCost = existing
-      ? Math.round(((existing.avg_cost * existing.shares) + (price * buyShares)) / newShares * 100) / 100
+      ? Math.round(((existing.avg_cost * existing.shares) + (price * buyShares!)) / newShares * 100) / 100
       : price;
   }
 
   const newMarketValue = hasResult && price ? newShares * price : 0;
+
+  useEffect(() => {
+    if (!hasResult || !price || !buyShares || !buyCost) { onResult(null); return; }
+    onResult({
+      mode:       "buy",
+      buy:        { symbol: sym, name: lookup.name || sym, shares: buyShares, price, type: lookup.stockType },
+      sellAmt:    0,
+      buyAmt:     buyCost,
+      remainCash: 0,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasResult, sym, lookup.name, lookup.stockType, buyShares, buyCost, price]);
 
   return (
     <>
@@ -206,7 +332,6 @@ function BuyPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
           market={lookup.market}
         />
 
-        {/* 買入方式 */}
         {lookup.status === "found" && price && (
           <>
             <div>
@@ -253,13 +378,12 @@ function BuyPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
         )}
       </SectionCard>
 
-      {/* 試算結果 */}
       {hasResult && price && buyCost !== null && (
         <ResultCard>
           <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-1">試算結果</p>
           <ResultRow label="買入股票"   value={`${lookup.name || sym} (${sym})`} />
           <ResultRow label="現價"       value={`$${price.toLocaleString()}`} />
-          <ResultRow label="預計買入"   value={`${buyShares.toFixed(4)} 股`} />
+          <ResultRow label="預計買入"   value={`${buyShares!.toFixed(4)} 股`} />
           <ResultRow label="預計投入"   value={`$${formatCurrency(buyCost)}`} />
           <Divider />
           {existing ? (
@@ -275,7 +399,7 @@ function BuyPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
           ) : (
             <>
               <p className="text-xs text-blue-300 font-medium">💡 新增模擬持股</p>
-              <ResultRow label="持有" value={`${buyShares.toFixed(4)} 股 @ $${price.toLocaleString()}`} />
+              <ResultRow label="持有" value={`${buyShares!.toFixed(4)} 股 @ $${price.toLocaleString()}`} />
               <ResultRow label="市值" value={`$${formatCurrency(newMarketValue)}`} />
             </>
           )}
@@ -289,13 +413,18 @@ function BuyPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
 // 只賣 Panel
 // ════════════════════════════════════════════════════════════
 
-function SellPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
+function SellPanel({
+  holdings, onResult,
+}: {
+  holdings: HoldingWithPrice[];
+  onResult: (r: SimResult | null) => void;
+}) {
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [sellSharesStr,  setSellSharesStr]   = useState("");
 
   const holding = holdings.find((h) => h.symbol === selectedSymbol) ?? null;
   const sellShares = Number(sellSharesStr);
-  const isValid    = holding && sellShares > 0 && sellShares <= holding.shares;
+  const isValid    = !!(holding && sellShares > 0 && sellShares <= holding.shares);
 
   const sellPrice     = holding?.current_price ?? 0;
   const sellAmount    = isValid ? sellShares * sellPrice : 0;
@@ -306,10 +435,21 @@ function SellPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
   const remainValue   = remainShares > 0 ? remainShares * sellPrice : 0;
   const isFullSell    = isValid && sellShares >= (holding?.shares ?? 0);
 
+  useEffect(() => {
+    if (!isValid || !holding) { onResult(null); return; }
+    onResult({
+      mode:       "sell",
+      sell:       { symbol: holding.symbol, name: holding.name, shares: sellShares, price: sellPrice, avgCost: holding.avg_cost },
+      sellAmt:    sellAmount,
+      buyAmt:     0,
+      remainCash: 0,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isValid, selectedSymbol, sellShares, sellPrice, sellAmount]);
+
   return (
     <>
       <SectionCard title="賣出設定">
-        {/* 選擇股票 */}
         <div>
           <label className="text-xs font-medium text-muted mb-1.5 block">選擇持股</label>
           <select value={selectedSymbol} onChange={(e) => { setSelectedSymbol(e.target.value); setSellSharesStr(""); }}
@@ -323,7 +463,6 @@ function SellPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
           </select>
         </div>
 
-        {/* 賣出股數 */}
         {holding && (
           <div>
             <label className="text-xs font-medium text-muted mb-1.5 flex items-center justify-between">
@@ -338,13 +477,12 @@ function SellPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
               onChange={(e) => setSellSharesStr(e.target.value)}
               className="w-full bg-white rounded-2xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-300 shadow-sm outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all" />
             {sellShares > (holding?.shares ?? 0) && (
-              <p className="text-xs text-red-400 mt-1">不能超過持有股數 {holding.shares}</p>
+              <p className="text-xs text-red-400 mt-1">賣出股數不可超過持有股數 {holding.shares}</p>
             )}
           </div>
         )}
       </SectionCard>
 
-      {/* 試算結果 */}
       {isValid && holding && (
         <ResultCard>
           <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-1">試算結果</p>
@@ -377,11 +515,14 @@ function SellPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
 // 換股 Panel
 // ════════════════════════════════════════════════════════════
 
-function SwapPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
-  // 賣出側
+function SwapPanel({
+  holdings, onResult,
+}: {
+  holdings: HoldingWithPrice[];
+  onResult: (r: SimResult | null) => void;
+}) {
   const [sellSymbol,     setSellSymbol]     = useState("");
   const [sellSharesStr,  setSellSharesStr]  = useState("");
-  // 買入側
   const buyLookup = useLookup();
 
   const sellHolding   = holdings.find((h) => h.symbol === sellSymbol) ?? null;
@@ -394,14 +535,41 @@ function SwapPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
   const remainShares  = (sellHolding?.shares ?? 0) - sellSharesNum;
   const remainValue   = remainShares > 0 ? remainShares * sellPrice : 0;
 
-  const hasValidSell = sellHolding && sellSharesNum > 0 && sellSharesNum <= (sellHolding?.shares ?? 0);
+  const hasValidSell = !!(sellHolding && sellSharesNum > 0 && sellSharesNum <= (sellHolding?.shares ?? 0));
 
   const buyPrice        = buyLookup.price;
   const buySharesWhole  = buyPrice && sellAmount > 0 ? Math.floor(sellAmount / buyPrice) : 0;
-  const buySharesFrac   = buyPrice && sellAmount > 0 ? sellAmount / buyPrice : 0;
   const buyAmountWhole  = buySharesWhole * (buyPrice ?? 0);
   const remainCash      = sellAmount - buyAmountWhole;
-  const hasValidBuy     = buyLookup.status === "found" && buyPrice;
+  const hasValidBuy     = buyLookup.status === "found" && !!buyPrice;
+
+  useEffect(() => {
+    if (!hasValidSell || !hasValidBuy || !buyPrice || !sellHolding || buySharesWhole <= 0) {
+      onResult(null); return;
+    }
+    onResult({
+      mode: "swap",
+      sell: {
+        symbol:  sellHolding.symbol,
+        name:    sellHolding.name,
+        shares:  sellSharesNum,
+        price:   sellPrice,
+        avgCost: sellHolding.avg_cost,
+      },
+      buy: {
+        symbol: buyLookup.symbol,
+        name:   buyLookup.name || buyLookup.symbol,
+        shares: buySharesWhole,
+        price:  buyPrice,
+        type:   buyLookup.stockType,
+      },
+      sellAmt:    sellAmount,
+      buyAmt:     buyAmountWhole,
+      remainCash,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasValidSell, hasValidBuy, sellSymbol, sellSharesNum, sellPrice, sellAmount,
+      buyLookup.symbol, buyLookup.name, buyLookup.stockType, buyPrice, buySharesWhole, remainCash]);
 
   return (
     <>
@@ -486,7 +654,6 @@ function SwapPanel({ holdings }: { holdings: HoldingWithPrice[] }) {
         )}
       </SectionCard>
 
-      {/* 換股後總覽 */}
       {hasValidSell && hasValidBuy && buyPrice && (
         <ResultCard>
           <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-1">換股後預估</p>
@@ -527,12 +694,28 @@ const MODE_LABELS: Record<SimMode, string> = {
   swap: "換股",
 };
 
+type ToastState = { type: "success" | "error"; message: string } | null;
+
 export default function SimulatorPage() {
-  const [mode,     setMode]     = useState<SimMode>("buy");
-  const [holdings, setHoldings] = useState<HoldingWithPrice[]>([]);
-  const [loadingH, setLoadingH] = useState(true);
+  const [mode,        setMode]        = useState<SimMode>("buy");
+  const [holdings,    setHoldings]    = useState<HoldingWithPrice[]>([]);
+  const [loadingH,    setLoadingH]    = useState(true);
+  const [simResult,   setSimResult]   = useState<SimResult | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [applying,    setApplying]    = useState(false);
+  const [toast,       setToast]       = useState<ToastState>(null);
 
   useEffect(() => { loadHoldings(); }, []);
+
+  // 切換模式時清除結果
+  useEffect(() => { setSimResult(null); }, [mode]);
+
+  // Toast 自動消失
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   async function loadHoldings() {
     setLoadingH(true);
@@ -551,6 +734,39 @@ export default function SimulatorPage() {
       );
     } finally {
       setLoadingH(false);
+    }
+  }
+
+  const handleResult = useCallback((r: SimResult | null) => {
+    setSimResult(r);
+  }, []);
+
+  async function applyToHoldings() {
+    if (!simResult) return;
+    setApplying(true);
+    try {
+      const res = await fetch("/api/simulator/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: simResult.mode,
+          sell: simResult.sell,
+          buy:  simResult.buy,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setToast({ type: "error", message: json.error ?? "套用失敗，請重試" });
+      } else {
+        setToast({ type: "success", message: "庫存已更新，交易紀錄已保存" });
+        setConfirmOpen(false);
+        setSimResult(null);
+        await loadHoldings();
+      }
+    } catch {
+      setToast({ type: "error", message: "網路錯誤，請重試" });
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -587,9 +803,9 @@ export default function SimulatorPage() {
         </div>
       ) : (
         <>
-          {mode === "buy"  && <BuyPanel  holdings={holdings} />}
-          {mode === "sell" && <SellPanel holdings={holdings} />}
-          {mode === "swap" && <SwapPanel holdings={holdings} />}
+          {mode === "buy"  && <BuyPanel  holdings={holdings} onResult={handleResult} />}
+          {mode === "sell" && <SellPanel holdings={holdings} onResult={handleResult} />}
+          {mode === "swap" && <SwapPanel holdings={holdings} onResult={handleResult} />}
 
           {(mode === "sell" || mode === "swap") && holdings.length === 0 && (
             <div className="text-center py-16 text-muted text-sm">
@@ -598,7 +814,36 @@ export default function SimulatorPage() {
               <p className="text-xs mt-1">請先到「新增」加入持股</p>
             </div>
           )}
+
+          {/* 確認加入庫存 按鈕 */}
+          {simResult && (
+            <button
+              onClick={() => setConfirmOpen(true)}
+              className="w-full py-4 bg-gray-900 text-white rounded-2xl font-semibold text-sm active:scale-95 transition-transform shadow-md"
+            >
+              確認加入庫存
+            </button>
+          )}
         </>
+      )}
+
+      {/* 確認 Modal */}
+      {confirmOpen && simResult && (
+        <ConfirmModal
+          result={simResult}
+          applying={applying}
+          onConfirm={applyToHoldings}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-lg text-sm font-semibold text-white transition-all ${
+          toast.type === "success" ? "bg-gray-900" : "bg-red-500"
+        }`}>
+          {toast.message}
+        </div>
       )}
     </div>
   );
