@@ -36,25 +36,59 @@ export default function SummaryBanner({ summary: s }: { summary: PortfolioSummar
 
       {/* P&L row */}
       <div className="border-t border-white/10 pt-4">
-        <div className="flex justify-between">
-          <div>
-            <p className="text-xs text-gray-400">總損益</p>
-            <p className={`text-base font-semibold ${s.total_pnl >= 0 ? "text-red-400" : "text-green-400"}`}>
-              {formatChange(s.total_pnl, 0)}
-            </p>
+        <div className="flex justify-between items-start">
+
+          {/* 左欄：總損益 ＋（今日已實現） */}
+          <div className="space-y-2.5">
+            <div>
+              <p className="text-xs text-gray-400">總損益</p>
+              <p className={`text-base font-semibold ${s.total_pnl >= 0 ? "text-red-400" : "text-green-400"}`}>
+                {formatChange(s.total_pnl, 0)}
+              </p>
+            </div>
+            {s.realized_pnl_today !== undefined && (
+              <div>
+                <p className="text-xs text-gray-400">今日已實現</p>
+                <p className={`text-sm font-semibold ${
+                  s.realized_pnl_today > 0  ? "text-red-400"
+                  : s.realized_pnl_today < 0 ? "text-green-400"
+                  : "text-gray-400"
+                }`}>
+                  {s.realized_pnl_today > 0 ? "+" : ""}
+                  {s.realized_pnl_today === 0
+                    ? "$0"
+                    : `${s.realized_pnl_today < 0 ? "-" : ""}$${formatCurrency(Math.abs(s.realized_pnl_today))}`}
+                </p>
+              </div>
+            )}
           </div>
-          <div className="text-right">
+
+          {/* 中欄：總報酬率 */}
+          <div className="text-center">
             <p className="text-xs text-gray-400">總報酬率</p>
             <p className={`text-base font-semibold ${s.total_pnl_pct >= 0 ? "text-red-400" : "text-green-400"}`}>
               {formatPct(s.total_pnl_pct)}
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-400">投入成本</p>
-            <p className="text-base font-semibold text-gray-200">
-              ${formatCurrency(s.total_cost)}
-            </p>
+
+          {/* 右欄：投入成本 ＋（帳戶餘額） */}
+          <div className="text-right space-y-2.5">
+            <div>
+              <p className="text-xs text-gray-400">投入成本</p>
+              <p className="text-base font-semibold text-gray-200">
+                ${formatCurrency(s.total_cost)}
+              </p>
+            </div>
+            {s.cash_balance !== undefined && (
+              <div>
+                <p className="text-xs text-gray-400">帳戶餘額</p>
+                <p className="text-sm font-semibold text-gray-200">
+                  ${formatCurrency(s.cash_balance)}
+                </p>
+              </div>
+            )}
           </div>
+
         </div>
       </div>
 

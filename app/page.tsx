@@ -175,7 +175,6 @@ export default function OverviewPage() {
   const [userSettings, setUserSettings] = useState<UserSettings>({ dividend_reinvest_enabled: false });
   const [syncing, setSyncing]       = useState(false);
   const [syncResult, setSyncResult] = useState<DivSyncResponse | null>(null);
-  const [acctSummary, setAcctSummary] = useState<{ cash_balance: number; realized_pnl_today: number } | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -220,7 +219,6 @@ export default function OverviewPage() {
         const acct          = acctRes.ok        ? await acctRes.json()      : null;
 
         setUserSettings(settings);
-        if (acct) setAcctSummary({ cash_balance: acct.cash_balance ?? 0, realized_pnl_today: acct.realized_pnl_today ?? 0 });
 
         const enriched: HoldingWithQuote[] = holdingsData.map(
           (h: { symbol: string; shares: number; avg_cost: number; id: string; name: string; type: "stock" | "etf" }) => {
@@ -267,11 +265,13 @@ export default function OverviewPage() {
 
         setSummary({
           total_assets, total_cost, total_pnl,
-          total_pnl_pct: total_cost > 0 ? (total_pnl / total_cost) * 100 : 0,
+          total_pnl_pct:      total_cost > 0 ? (total_pnl / total_cost) * 100 : 0,
           daily_pnl,
-          daily_pnl_pct: (total_assets - daily_pnl) > 0 ? (daily_pnl / (total_assets - daily_pnl)) * 100 : 0,
+          daily_pnl_pct:      (total_assets - daily_pnl) > 0 ? (daily_pnl / (total_assets - daily_pnl)) * 100 : 0,
           ytd_dividends,
           estimated_dividends,
+          cash_balance:        acct?.cash_balance       ?? 0,
+          realized_pnl_today:  acct?.realized_pnl_today ?? 0,
         });
       }
       setLastUpdated(new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }));
@@ -344,29 +344,6 @@ export default function OverviewPage() {
         ) : summary ? (
           <SummaryBanner summary={summary} />
         ) : null}
-
-        {/* 帳戶餘額小卡 */}
-        {!loading && acctSummary !== null && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
-              <p className="text-xs text-muted mb-1">帳戶餘額</p>
-              <p className="text-base font-bold text-gray-900">
-                ${formatCurrency(acctSummary.cash_balance)}
-              </p>
-            </div>
-            <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
-              <p className="text-xs text-muted mb-1">今日已實現</p>
-              <p className={`text-base font-bold ${
-                acctSummary.realized_pnl_today > 0 ? "text-red-500"
-                : acctSummary.realized_pnl_today < 0 ? "text-green-600"
-                : "text-gray-900"
-              }`}>
-                {acctSummary.realized_pnl_today >= 0 ? "+" : ""}
-                ${formatCurrency(Math.abs(acctSummary.realized_pnl_today))}
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* 近期配息提醒 */}
         {!loading && upcomingDividends.length > 0 && (

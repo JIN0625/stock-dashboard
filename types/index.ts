@@ -104,6 +104,8 @@ export interface PortfolioSummary {
   daily_pnl_pct:         number;
   ytd_dividends?:        number;
   estimated_dividends?:  number;
+  cash_balance?:         number;
+  realized_pnl_today?:   number;
 }
 
 // ── ETF 成分股 ───────────────────────────────────────────────
