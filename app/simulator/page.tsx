@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { RefreshCw, ArrowDown, Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
+import { RefreshCw, ArrowDown, Loader2, CheckCircle2, AlertCircle, X, Pencil } from "lucide-react";
 import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
 
 // ════════════════════════════════════════════════════════════
@@ -198,6 +198,119 @@ function SymbolLookupInput({ label, value, onChange, status, name, refPrice, mar
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// 帳戶餘額卡片
+// ════════════════════════════════════════════════════════════
+
+function AccountBalanceCard({ balance, onEdit }: { balance: number; onEdit: () => void }) {
+  return (
+    <div className="bg-white rounded-2xl px-5 py-4 shadow-sm flex items-center justify-between">
+      <div>
+        <p className="text-xs text-muted mb-1">帳戶餘額</p>
+        <p className="text-2xl font-bold text-gray-900">${formatCurrency(balance)}</p>
+      </div>
+      <button
+        onClick={onEdit}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 text-gray-600 text-xs font-semibold active:scale-95 transition-transform"
+      >
+        <Pencil size={12} />
+        編輯
+      </button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// 編輯帳戶餘額 Modal
+// ════════════════════════════════════════════════════════════
+
+function EditBalanceModal({
+  current, onSave, onCancel,
+}: {
+  current: number;
+  onSave: (value: number) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [raw,     setRaw]     = useState(current > 0 ? String(current) : "");
+  const [saving,  setSaving]  = useState(false);
+  const [errMsg,  setErrMsg]  = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // 顯示用千分位格式
+  const displayValue = raw === "" ? "" : Number(raw).toLocaleString("en-US");
+
+  async function handleSave() {
+    const val = parseFloat(raw.replace(/,/g, ""));
+    if (isNaN(val) || val < 0) { setErrMsg("請輸入有效的金額（≥ 0）"); return; }
+    setSaving(true);
+    try {
+      await onSave(val);
+    } catch {
+      setErrMsg("儲存失敗，請重試");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") handleSave();
+    if (e.key === "Escape") onCancel();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-white rounded-t-3xl p-6 pb-10 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-900">設定帳戶餘額</h3>
+          <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100">
+            <X size={14} className="text-gray-500" />
+          </button>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-muted mb-1.5 block">目前帳戶餘額</label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-base">$</span>
+            <input
+              ref={inputRef}
+              type="number"
+              inputMode="decimal"
+              placeholder="0"
+              value={raw}
+              onChange={(e) => { setRaw(e.target.value); setErrMsg(""); }}
+              onKeyDown={handleKeyDown}
+              className="w-full bg-gray-50 rounded-2xl pl-8 pr-4 py-3.5 text-base text-gray-900 placeholder-gray-300 outline-none border border-transparent focus:ring-2 focus:ring-red-400/30 focus:border-red-300 transition-all"
+            />
+          </div>
+          {raw !== "" && (
+            <p className="text-xs text-muted mt-1.5">顯示：${displayValue}</p>
+          )}
+          {errMsg && <p className="text-xs text-red-400 mt-1.5">{errMsg}</p>}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel} disabled={saving}
+            className="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-600 text-sm font-semibold active:scale-95 transition-transform"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSave} disabled={saving}
+            className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white text-sm font-semibold active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-sm"
+          >
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            儲存
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -796,11 +909,12 @@ export default function SimulatorPage() {
   const [mode,         setMode]         = useState<SimMode>("buy");
   const [holdings,     setHoldings]     = useState<HoldingWithPrice[]>([]);
   const [loadingH,     setLoadingH]     = useState(true);
-  const [cashBalance,  setCashBalance]  = useState(0);
-  const [simResult,    setSimResult]    = useState<SimResult | null>(null);
-  const [confirmOpen,  setConfirmOpen]  = useState(false);
-  const [applying,     setApplying]     = useState(false);
-  const [toast,        setToast]        = useState<ToastState>(null);
+  const [cashBalance,   setCashBalance]   = useState(0);
+  const [editBalOpen,   setEditBalOpen]   = useState(false);
+  const [simResult,     setSimResult]     = useState<SimResult | null>(null);
+  const [confirmOpen,   setConfirmOpen]   = useState(false);
+  const [applying,      setApplying]      = useState(false);
+  const [toast,         setToast]         = useState<ToastState>(null);
 
   useEffect(() => { loadHoldings(); loadAccountSummary(); }, []);
   useEffect(() => { setSimResult(null); }, [mode]);
@@ -815,6 +929,22 @@ export default function SimulatorPage() {
       const res = await fetch("/api/account-summary");
       if (res.ok) { const d = await res.json(); setCashBalance(d.cash_balance ?? 0); }
     } catch { /* ignore */ }
+  }
+
+  async function saveBalance(value: number) {
+    const res = await fetch("/api/account-summary", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cash_balance: value }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error ?? "儲存失敗");
+    }
+    const d = await res.json();
+    setCashBalance(d.cash_balance ?? value);
+    setEditBalOpen(false);
+    setToast({ type: "success", message: "帳戶餘額已更新" });
   }
 
   async function loadHoldings() {
@@ -876,6 +1006,9 @@ export default function SimulatorPage() {
         </button>
       </div>
 
+      {/* 帳戶餘額卡片 */}
+      <AccountBalanceCard balance={cashBalance} onEdit={() => setEditBalOpen(true)} />
+
       {/* 模式切換 */}
       <div className="flex gap-1 bg-gray-100 rounded-2xl p-1">
         {(Object.keys(MODE_LABELS) as SimMode[]).map((m) => (
@@ -915,6 +1048,14 @@ export default function SimulatorPage() {
             </button>
           )}
         </>
+      )}
+
+      {editBalOpen && (
+        <EditBalanceModal
+          current={cashBalance}
+          onSave={saveBalance}
+          onCancel={() => setEditBalOpen(false)}
+        />
       )}
 
       {confirmOpen && simResult && (
