@@ -205,69 +205,171 @@ function SymbolLookupInput({ label, value, onChange, status, name, refPrice, mar
 // 確認 Modal
 // ════════════════════════════════════════════════════════════
 
-function ConfirmModal({ result, applying, onConfirm, onCancel }: {
-  result: SimResult; applying: boolean; onConfirm: () => void; onCancel: () => void;
+function BeforeAfterRow({ label, before, after, highlight }: {
+  label: string; before: string; after: string; highlight?: boolean;
 }) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <span className="text-xs text-gray-500 shrink-0 pt-0.5">{label}</span>
+      <span className="text-xs text-right">
+        <span className="text-gray-400 line-through">{before}</span>
+        <span className="mx-1 text-gray-300">→</span>
+        <span className={`font-semibold ${highlight ? "text-red-500" : "text-gray-900"}`}>{after}</span>
+      </span>
+    </div>
+  );
+}
+
+function ConfirmModal({ result, holdings, applying, onConfirm, onCancel }: {
+  result: SimResult; holdings: HoldingWithPrice[]; applying: boolean;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  const sellHolding = result.sell ? holdings.find((h) => h.symbol === result.sell!.symbol) : null;
+  const buyHolding  = result.buy  ? holdings.find((h) => h.symbol === result.buy!.symbol)  : null;
+
+  // 計算賣出後
+  const afterSellShares = sellHolding ? sellHolding.shares - (result.sell?.shares ?? 0) : 0;
+
+  // 計算買入後
+  const afterBuyShares  = (buyHolding?.shares ?? 0) + (result.buy?.shares ?? 0);
+  const afterBuyAvgCost = buyHolding && result.buy
+    ? calcNewAvgCost(buyHolding.shares, buyHolding.avg_cost, result.buy.shares, result.buy.price)
+    : result.buy?.price ?? 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative w-full max-w-sm bg-white rounded-t-3xl p-6 pb-10 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between">
+
+      {/* 底部 Sheet */}
+      <div className="relative w-full max-w-sm bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[85vh]">
+
+        {/* 標題列 */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <h3 className="text-base font-bold text-gray-900">確認套用試算結果</h3>
           <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100">
             <X size={14} className="text-gray-500" />
           </button>
         </div>
 
-        <div className="bg-gray-50 rounded-2xl p-4 space-y-2 text-sm">
-          {result.sell && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">賣出</span>
-              <span className="font-semibold text-gray-900">
-                {result.sell.name} ({result.sell.symbol}) {result.sell.shares} 股 @ ${result.sell.price}
-              </span>
+        {/* 可捲動內容 */}
+        <div className="flex-1 overflow-y-auto px-6 pb-4 space-y-4">
+
+          {/* 交易摘要 */}
+          <div className="bg-gray-50 rounded-2xl p-4 space-y-2 text-sm">
+            {result.sell && (
+              <div className="flex justify-between gap-2">
+                <span className="text-gray-500 shrink-0">賣出</span>
+                <span className="font-semibold text-gray-900 text-right">
+                  {result.sell.name} ({result.sell.symbol})<br />
+                  <span className="text-xs font-normal text-gray-600">
+                    {result.sell.shares.toLocaleString()} 股 @ ${result.sell.price.toFixed(2)}
+                    ＝ ${formatCurrency(result.sellAmt)}
+                  </span>
+                </span>
+              </div>
+            )}
+            {result.buy && (
+              <div className="flex justify-between gap-2">
+                <span className="text-gray-500 shrink-0">買入</span>
+                <span className="font-semibold text-gray-900 text-right">
+                  {result.buy.name} ({result.buy.symbol})<br />
+                  <span className="text-xs font-normal text-gray-600">
+                    {result.buy.shares.toLocaleString()} 股 @ ${result.buy.price.toFixed(2)}
+                    ＝ ${formatCurrency(result.buyAmt)}
+                  </span>
+                </span>
+              </div>
+            )}
+            {result.remainCash !== 0 && (
+              <div className="flex justify-between pt-1 border-t border-gray-200">
+                <span className="text-gray-500">剩餘現金</span>
+                <span className={`font-semibold ${result.remainCash < 0 ? "text-red-500" : "text-gray-900"}`}>
+                  ${formatCurrency(result.remainCash)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* 預計庫存變化 */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">預計更新庫存</p>
+            <div className="space-y-3">
+
+              {/* 賣出後庫存 */}
+              {result.sell && sellHolding && (
+                <div className="bg-orange-50 rounded-2xl p-4 space-y-2">
+                  <p className="text-xs font-semibold text-orange-700">
+                    {sellHolding.name} ({sellHolding.symbol})
+                  </p>
+                  {afterSellShares > 0 ? (
+                    <>
+                      <BeforeAfterRow
+                        label="股數"
+                        before={`${sellHolding.shares.toLocaleString()} 股`}
+                        after={`${afterSellShares.toLocaleString()} 股`}
+                      />
+                      <BeforeAfterRow
+                        label="平均成本"
+                        before={`$${sellHolding.avg_cost}`}
+                        after={`$${sellHolding.avg_cost}`}
+                      />
+                    </>
+                  ) : (
+                    <p className="text-xs text-orange-600 font-medium">全部賣出，將從庫存移除</p>
+                  )}
+                </div>
+              )}
+
+              {/* 買入後庫存 */}
+              {result.buy && (
+                <div className="bg-blue-50 rounded-2xl p-4 space-y-2">
+                  <p className="text-xs font-semibold text-blue-700">
+                    {result.buy.name} ({result.buy.symbol})
+                  </p>
+                  {buyHolding ? (
+                    <>
+                      <BeforeAfterRow
+                        label="股數"
+                        before={`${buyHolding.shares.toLocaleString()} 股`}
+                        after={`${afterBuyShares.toLocaleString()} 股`}
+                      />
+                      <BeforeAfterRow
+                        label="平均成本"
+                        before={`$${buyHolding.avg_cost}`}
+                        after={`$${afterBuyAvgCost.toFixed(4)}`}
+                        highlight={afterBuyAvgCost > buyHolding.avg_cost}
+                      />
+                    </>
+                  ) : (
+                    <p className="text-xs text-blue-600 font-medium">
+                      新增持股：{result.buy.shares.toLocaleString()} 股，平均成本 ${result.buy.price.toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-          {result.buy && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">買入</span>
-              <span className="font-semibold text-gray-900">
-                {result.buy.name} ({result.buy.symbol}) {result.buy.shares} 股 @ ${result.buy.price}
-              </span>
-            </div>
-          )}
-          {result.sellAmt > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">賣出金額</span>
-              <span className="font-semibold">${formatCurrency(result.sellAmt)}</span>
-            </div>
-          )}
-          {result.buyAmt > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">買入金額</span>
-              <span className="font-semibold">${formatCurrency(result.buyAmt)}</span>
-            </div>
-          )}
-          {result.remainCash > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">剩餘現金</span>
-              <span className="font-semibold">${formatCurrency(result.remainCash)}</span>
-            </div>
-          )}
+          </div>
+
+          <p className="text-xs text-gray-400 text-center pb-2">此操作將直接更新您的庫存資料。</p>
         </div>
 
-        <p className="text-xs text-gray-400 text-center">此操作將直接更新您的庫存資料。</p>
-
-        <div className="flex gap-3">
-          <button onClick={onCancel} disabled={applying}
-            className="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-600 text-sm font-semibold active:scale-95 transition-transform">
-            取消
-          </button>
-          <button onClick={onConfirm} disabled={applying}
-            className="flex-1 py-3 rounded-2xl bg-gray-900 text-white text-sm font-semibold active:scale-95 transition-transform flex items-center justify-center gap-2">
-            {applying && <Loader2 size={14} className="animate-spin" />}
-            確認套用
-          </button>
+        {/* 固定底部操作列，預留 BottomNav 高度 */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 pt-4 pb-[calc(env(safe-area-inset-bottom)+88px)] shrink-0">
+          <div className="flex gap-3">
+            <button
+              onClick={onCancel} disabled={applying}
+              className="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-600 text-sm font-semibold active:scale-95 transition-transform"
+            >
+              取消
+            </button>
+            <button
+              onClick={onConfirm} disabled={applying}
+              className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white text-sm font-semibold active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-sm"
+            >
+              {applying && <Loader2 size={14} className="animate-spin" />}
+              確認加入庫存
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -756,7 +858,7 @@ export default function SimulatorPage() {
 
       {confirmOpen && simResult && (
         <ConfirmModal
-          result={simResult} applying={applying}
+          result={simResult} holdings={holdings} applying={applying}
           onConfirm={applyToHoldings} onCancel={() => setConfirmOpen(false)}
         />
       )}
