@@ -29,7 +29,6 @@ export async function GET() {
 
     if (insertErr) {
       console.error("[GET /api/account-summary] insert default:", insertErr);
-      // 建立失敗也回傳預設值，不讓頁面壞掉
       return NextResponse.json({ cash_balance: 0, realized_pnl_today: 0, updated_at: null });
     }
     return NextResponse.json(created);
@@ -47,7 +46,9 @@ export async function PATCH(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch {
+  try {
+    body = await req.json();
+  } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
@@ -56,19 +57,52 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "cash_balance (number) is required" }, { status: 400 });
   }
 
-  const { data, error } = await sb
+  // ── 先查是否已有紀錄 ──────────────────────────────────────────
+  const { data: existing, error: fetchErr } = await sb
     .from("account_summary")
-    .upsert(
-      { user_id: user.id, cash_balance, updated_at: new Date().toISOString() },
-      { onConflict: "user_id" },
-    )
     .select("cash_balance, realized_pnl_today, updated_at")
-    .single();
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  if (error) {
-    console.error("[PATCH /api/account-summary]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (fetchErr) {
+    console.error("[PATCH /api/account-summary] fetch:", fetchErr);
+    return NextResponse.json(
+      { error: `查詢帳戶失敗：${fetchErr.message}` },
+      { status: 500 },
+    );
   }
 
-  return NextResponse.json(data);
+  // ── 有紀錄 → UPDATE；無紀錄 → INSERT ─────────────────────────
+  if (existing) {
+    const { data: updated, error: updateErr } = await sb
+      .from("account_summary")
+      .update({ cash_balance, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .select("cash_balance, realized_pnl_today, updated_at")
+      .single();
+
+    if (updateErr) {
+      console.error("[PATCH /api/account-summary] update:", updateErr);
+      return NextResponse.json(
+        { error: `更新失敗：${updateErr.message}` },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(updated);
+  } else {
+    const { data: inserted, error: insertErr } = await sb
+      .from("account_summary")
+      .insert({ user_id: user.id, cash_balance, realized_pnl_today: 0 })
+      .select("cash_balance, realized_pnl_today, updated_at")
+      .single();
+
+    if (insertErr) {
+      console.error("[PATCH /api/account-summary] insert:", insertErr);
+      return NextResponse.json(
+        { error: `建立帳戶失敗：${insertErr.message}` },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(inserted);
+  }
 }

@@ -252,8 +252,8 @@ function EditBalanceModal({
     setSaving(true);
     try {
       await onSave(val);
-    } catch {
-      setErrMsg("儲存失敗，請重試");
+    } catch (e) {
+      setErrMsg(e instanceof Error ? e.message : "儲存失敗，請重試");
     } finally {
       setSaving(false);
     }
@@ -947,12 +947,12 @@ export default function SimulatorPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cash_balance: value }),
     });
+    const j = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      throw new Error(j.error ?? "儲存失敗");
+      // 優先使用後端回傳的詳細訊息
+      throw new Error(j.error ?? j.message ?? `HTTP ${res.status} 儲存失敗`);
     }
-    const d = await res.json();
-    setCashBalance(d.cash_balance ?? value);
+    setCashBalance(j.cash_balance ?? value);
     setEditBalOpen(false);
     setToast({ type: "success", message: "帳戶餘額已更新" });
   }
