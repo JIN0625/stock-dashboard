@@ -175,6 +175,7 @@ export default function OverviewPage() {
   const [userSettings, setUserSettings] = useState<UserSettings>({ dividend_reinvest_enabled: false });
   const [syncing, setSyncing]       = useState(false);
   const [syncResult, setSyncResult] = useState<DivSyncResponse | null>(null);
+  const [acctSummary, setAcctSummary] = useState<{ cash_balance: number; realized_pnl_today: number } | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -201,11 +202,12 @@ export default function OverviewPage() {
 
         const symbols = holdingsData.map((h: { symbol: string }) => h.symbol).join(",");
 
-        const [quotesRes, dividendsRes, recordsRes, settingsRes] = await Promise.all([
+        const [quotesRes, dividendsRes, recordsRes, settingsRes, acctRes] = await Promise.all([
           fetch(`/api/quotes?symbols=${symbols}`),
           fetch(`/api/dividends?symbols=${symbols}`),
           fetch("/api/dividends/records"),
           fetch("/api/user-settings"),
+          fetch("/api/account-summary"),
         ]);
 
         const quotes        = quotesRes.ok      ? await quotesRes.json()    : {};
@@ -215,8 +217,10 @@ export default function OverviewPage() {
                             = recordsRes.ok     ? await recordsRes.json()   : [];
         const settings: UserSettings
                             = settingsRes.ok    ? await settingsRes.json()  : { dividend_reinvest_enabled: false };
+        const acct          = acctRes.ok        ? await acctRes.json()      : null;
 
         setUserSettings(settings);
+        if (acct) setAcctSummary({ cash_balance: acct.cash_balance ?? 0, realized_pnl_today: acct.realized_pnl_today ?? 0 });
 
         const enriched: HoldingWithQuote[] = holdingsData.map(
           (h: { symbol: string; shares: number; avg_cost: number; id: string; name: string; type: "stock" | "etf" }) => {
@@ -340,6 +344,29 @@ export default function OverviewPage() {
         ) : summary ? (
           <SummaryBanner summary={summary} />
         ) : null}
+
+        {/* 帳戶餘額小卡 */}
+        {!loading && acctSummary !== null && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+              <p className="text-xs text-muted mb-1">帳戶餘額</p>
+              <p className="text-base font-bold text-gray-900">
+                ${formatCurrency(acctSummary.cash_balance)}
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+              <p className="text-xs text-muted mb-1">今日已實現</p>
+              <p className={`text-base font-bold ${
+                acctSummary.realized_pnl_today > 0 ? "text-red-500"
+                : acctSummary.realized_pnl_today < 0 ? "text-green-600"
+                : "text-gray-900"
+              }`}>
+                {acctSummary.realized_pnl_today >= 0 ? "+" : ""}
+                ${formatCurrency(Math.abs(acctSummary.realized_pnl_today))}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* 近期配息提醒 */}
         {!loading && upcomingDividends.length > 0 && (

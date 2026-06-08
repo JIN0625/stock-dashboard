@@ -158,5 +158,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── 4. 更新 account_summary ───────────────────────────────────
+  // cash_balance：賣出 +、買入 -
+  // realized_pnl_today：SELL 交易累加
+  const sellAmount  = sell ? sell.shares * sell.price  : 0;
+  const buyAmount   = buy  ? buy.shares  * buy.price   : 0;
+  const cashDelta   = sellAmount - buyAmount;
+  const pnlDelta    = sell ? (sell.price - actualAvgCost) * sell.shares : 0;
+
+  const { data: acct } = await sb
+    .from("account_summary")
+    .select("cash_balance, realized_pnl_today")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const newCash = (acct?.cash_balance        ?? 0) + cashDelta;
+  const newPnl  = (acct?.realized_pnl_today  ?? 0) + pnlDelta;
+
+  const { error: acctErr } = await sb
+    .from("account_summary")
+    .upsert(
+      {
+        user_id:            user.id,
+        cash_balance:       newCash,
+        realized_pnl_today: newPnl,
+        updated_at:         new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+  if (acctErr) {
+    // 主要操作已完成，記錄錯誤但不讓整筆交易失敗
+    console.error("[simulator/apply] account_summary upsert failed:", acctErr);
+  }
+
   return NextResponse.json({ ok: true });
 }
