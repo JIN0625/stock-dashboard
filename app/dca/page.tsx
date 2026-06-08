@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type { DcaPlan, DcaExecution, DcaRunResult } from "@/types";
+import ModalFooter from "@/components/ui/ModalFooter";
 
 // ════════════════════════════════════════════════════════════
 // 工具函式
@@ -574,10 +575,7 @@ export default function DcaPage() {
             </div>
 
             {/* ── 固定在底部的確認按鈕（不被 BottomNav 蓋住）── */}
-            <div
-              className="shrink-0 px-4 pt-3 bg-surface border-t border-gray-100"
-              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 96px)" }}
-            >
+            <ModalFooter>
               <button
                 type="button" onClick={handleSave}
                 disabled={saving || nameStatus === "fetching"}
@@ -586,7 +584,7 @@ export default function DcaPage() {
                 {saving && <Loader2 size={16} className="animate-spin" />}
                 {saving ? "儲存中…" : editingId ? "儲存變更" : "確認新增"}
               </button>
-            </div>
+            </ModalFooter>
 
           </div>
         </div>

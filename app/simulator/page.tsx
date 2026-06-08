@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { RefreshCw, ArrowDown, Loader2, CheckCircle2, AlertCircle, X, Pencil } from "lucide-react";
 import { formatCurrency, formatPct, formatChange, pnlColor } from "@/lib/utils";
+import ModalFooter from "@/components/ui/ModalFooter";
 
 // ════════════════════════════════════════════════════════════
 // 型別
@@ -266,15 +267,20 @@ function EditBalanceModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative w-full max-w-sm bg-white rounded-t-3xl p-6 pb-10 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between">
+
+      {/* flex-col sheet：header + 可捲內容 + sticky footer */}
+      <div className="relative w-full max-w-sm bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[85vh]">
+
+        {/* 標題列（不捲動） */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <h3 className="text-base font-bold text-gray-900">設定帳戶餘額</h3>
           <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100">
             <X size={14} className="text-gray-500" />
           </button>
         </div>
 
-        <div>
+        {/* 可捲動內容 */}
+        <div className="flex-1 overflow-y-auto px-6 pb-4">
           <label className="text-xs font-medium text-muted mb-1.5 block">目前帳戶餘額</label>
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-base">$</span>
@@ -295,21 +301,25 @@ function EditBalanceModal({
           {errMsg && <p className="text-xs text-red-400 mt-1.5">{errMsg}</p>}
         </div>
 
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel} disabled={saving}
-            className="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-600 text-sm font-semibold active:scale-95 transition-transform"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleSave} disabled={saving}
-            className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white text-sm font-semibold active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-sm"
-          >
-            {saving && <Loader2 size={14} className="animate-spin" />}
-            儲存
-          </button>
-        </div>
+        {/* 固定底部按鈕 */}
+        <ModalFooter>
+          <div className="flex gap-3">
+            <button
+              onClick={onCancel} disabled={saving}
+              className="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-600 text-sm font-semibold active:scale-95 transition-transform"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSave} disabled={saving}
+              className="flex-1 py-3.5 rounded-2xl bg-red-500 text-white text-sm font-semibold active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-sm"
+            >
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              儲存
+            </button>
+          </div>
+        </ModalFooter>
+
       </div>
     </div>
   );
