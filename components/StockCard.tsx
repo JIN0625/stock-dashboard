@@ -106,7 +106,7 @@ export default function StockCard({ holding: h }: { holding: HoldingWithQuote })
             </div>
           </div>
 
-          {/* 右：價格 + 今日漲跌 */}
+          {/* 右：價格 + 今日漲跌 + 報價來源 */}
           <div className="text-right">
             <p className="font-bold text-gray-900 text-base">
               {formatCurrency(h.current_price, h.current_price < 100 ? 2 : 0)}
@@ -114,6 +114,11 @@ export default function StockCard({ holding: h }: { holding: HoldingWithQuote })
             <p className={`text-xs font-medium ${pnlColor(h.change)}`}>
               {formatChange(h.change)} ({formatPct(h.change_pct)})
             </p>
+            {h.isRealtime !== undefined && (
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {h.isRealtime ? "即時報價" : "最近交易日"}
+              </p>
+            )}
           </div>
         </div>
 

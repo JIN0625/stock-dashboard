@@ -9,11 +9,13 @@ export interface Holding {
 }
 
 export interface Quote {
-  symbol:     string;
-  price:      number;
-  change:     number;
-  change_pct: number;
-  date:       string;
+  symbol:      string;
+  price:       number;
+  change:      number;
+  change_pct:  number;
+  date:        string;
+  source?:     "Yahoo" | "FinMind";
+  isRealtime?: boolean;
 }
 
 export interface DividendInfo {
@@ -88,6 +90,8 @@ export interface HoldingWithQuote extends Holding {
   history?:      PricePoint[];
   dividend?:       DividendInfo | null;
   dividendRecord?: DividendRecord | null;
+  source?:         "Yahoo" | "FinMind";
+  isRealtime?:     boolean;
 }
 
 export interface PricePoint {
