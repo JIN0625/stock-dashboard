@@ -90,8 +90,6 @@ export interface HoldingWithQuote extends Holding {
   history?:      PricePoint[];
   dividend?:       DividendInfo | null;
   dividendRecord?: DividendRecord | null;
-  source?:         "Yahoo" | "FinMind";
-  isRealtime?:     boolean;
 }
 
 export interface PricePoint {

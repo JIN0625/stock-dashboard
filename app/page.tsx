@@ -239,8 +239,7 @@ export default function OverviewPage() {
               ...h, current_price: price, change, change_pct,
               market_value, cost_basis, total_pnl, total_pnl_pct, daily_pnl,
               dividend, dividendRecord,
-              source:     q?.source,
-              isRealtime: q?.isRealtime,
+              quote_date: q?.date,
             };
           }
         );
